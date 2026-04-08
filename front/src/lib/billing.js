@@ -90,3 +90,31 @@ export async function createSubscriptionCheckoutSession({ workspaceId, userEmail
 
   return data;
 }
+
+export async function confirmBillingSession({ sessionId, workspaceId }) {
+  let response;
+
+  try {
+    response = await fetch(`${normalizeApiBaseUrl(apiUrl)}/api/billing/confirm-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sessionId, workspaceId }),
+    });
+  } catch (networkError) {
+    throw new Error(networkError?.message || 'Network error while confirming billing session.');
+  }
+
+  const { data, rawText } = await parseApiResponse(response);
+
+  if (!response.ok) {
+    const errorMessage =
+      data?.error ||
+      (rawText ? rawText.trim() : '') ||
+      `Billing confirmation failed with status ${response.status}.`;
+    throw new Error(errorMessage);
+  }
+
+  return data || {};
+}

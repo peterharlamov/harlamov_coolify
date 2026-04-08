@@ -255,6 +255,57 @@ app.post('/api/create-subscription-checkout-session', async (req, res) => {
   }
 });
 
+app.post('/api/billing/confirm-session', async (req, res) => {
+  const { sessionId, workspaceId: workspaceIdFromClient } = req.body || {};
+
+  if (!sessionId) {
+    jsonError(res, 400, 'sessionId is required.');
+    return;
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['subscription'],
+    });
+
+    if (session.mode !== 'subscription') {
+      jsonError(res, 400, 'Checkout session is not a subscription session.');
+      return;
+    }
+
+    if (session.payment_status !== 'paid') {
+      jsonError(res, 409, 'Checkout session is not paid yet.');
+      return;
+    }
+
+    let workspaceId = await resolveWorkspaceIdFromCheckoutSession(session);
+
+    if (!workspaceId && workspaceIdFromClient) {
+      workspaceId = workspaceIdFromClient;
+    }
+
+    if (!workspaceId) {
+      jsonError(res, 404, 'Workspace was not resolved for this checkout session.');
+      return;
+    }
+
+    await updateWorkspace(workspaceId, {
+      subscription_status: 'active',
+      device_limit: 1000000,
+      stripe_customer_id: session.customer || '',
+      stripe_subscription_id: typeof session.subscription === 'string' ? session.subscription : session.subscription?.id || '',
+      stripe_price_id: stripePriceId,
+    });
+
+    res.json({
+      workspaceId,
+      status: 'active',
+    });
+  } catch (error) {
+    jsonError(res, 500, error.message || 'Failed to confirm Stripe checkout session.');
+  }
+});
+
 app.post('/api/users/attach-workspace', async (req, res) => {
   const { userId } = req.body || {};
 

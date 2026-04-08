@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createSubscriptionCheckoutSession, getHostedPaymentLink, hasHostedPaymentLink } from '../lib/billing';
+import { createSubscriptionCheckoutSession, confirmBillingSession, getHostedPaymentLink, hasHostedPaymentLink } from '../lib/billing';
 import { getWorkspaceSummary } from '../lib/workspaces';
 import { pb } from '../lib/pocketbase';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
@@ -14,6 +14,7 @@ export function BillingPage() {
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState('');
 
   async function loadSummary(workspaceId) {
@@ -52,6 +53,52 @@ export function BillingPage() {
     loadSummary(workspace.id);
   }, [isWorkspaceReady, workspace?.id]);
 
+  useEffect(() => {
+    if (!workspace?.id) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+
+    if (!sessionId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function confirmAndRefresh() {
+      setIsConfirming(true);
+
+      try {
+        await confirmBillingSession({
+          sessionId,
+          workspaceId: workspace.id,
+        });
+
+        if (!cancelled) {
+          await loadSummary(workspace.id);
+          const cleanUrl = `${window.location.pathname}${window.location.hash || ''}`;
+          window.history.replaceState({}, '', cleanUrl);
+        }
+      } catch (confirmError) {
+        if (!cancelled) {
+          setError(confirmError?.message || 'Failed to confirm subscription payment.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsConfirming(false);
+        }
+      }
+    }
+
+    confirmAndRefresh();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id]);
+
   async function handleUpgrade() {
     if (!summary?.workspace?.id) {
       return;
@@ -88,7 +135,7 @@ export function BillingPage() {
     }
   }
 
-  if (!isWorkspaceReady || isLoading) {
+  if (!isWorkspaceReady || isLoading || isConfirming) {
     return <LoadingState message="Loading billing..." />;
   }
 
