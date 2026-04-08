@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createSubscriptionCheckoutSession, confirmBillingSession, getHostedPaymentLink, hasHostedPaymentLink, syncWorkspaceSubscription } from '../lib/billing';
+import { createSubscriptionCheckoutSession, confirmBillingSession, getHostedPaymentLink, hasHostedPaymentLink } from '../lib/billing';
 import { getWorkspaceSummary } from '../lib/workspaces';
 import { pb } from '../lib/pocketbase';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
@@ -112,27 +112,55 @@ export function BillingPage() {
       return;
     }
 
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+
     let cancelled = false;
 
     async function syncAfterHostedPayment() {
       setIsConfirming(true);
 
       try {
-        const result = await syncWorkspaceSubscription({
-          workspaceId: workspace.id,
-          userEmail: pb.authStore.record?.email,
-        });
+        if (sessionId) {
+          await confirmBillingSession({
+            sessionId,
+            workspaceId: workspace.id,
+          });
+        }
+
+        let lastSummary = null;
+
+        // Wait for webhook/confirmation propagation and refresh UI state.
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          if (cancelled) {
+            return;
+          }
+
+          lastSummary = await getWorkspaceSummary(workspace.id);
+
+          if (lastSummary.status === 'active' || lastSummary.status === 'trialing') {
+            break;
+          }
+
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, 1500);
+          });
+        }
 
         if (!cancelled) {
-          await loadSummary(workspace.id);
+          if (lastSummary) {
+            setSummary(lastSummary);
+          } else {
+            await loadSummary(workspace.id);
+          }
 
-          if (result.subscription_status === 'active' || result.subscription_status === 'trialing') {
+          if (lastSummary?.status === 'active' || lastSummary?.status === 'trialing') {
             window.localStorage.removeItem(pendingWorkspaceStorageKey);
           }
         }
       } catch (syncError) {
         if (!cancelled) {
-          setError(syncError?.message || 'Failed to sync subscription status.');
+          setError(syncError?.message || 'Failed to confirm subscription status.');
         }
       } finally {
         if (!cancelled) {
