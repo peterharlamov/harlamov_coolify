@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createSubscriptionCheckoutSession, confirmBillingSession, getHostedPaymentLink, hasHostedPaymentLink } from '../lib/billing';
+import { createSubscriptionCheckoutSession, confirmBillingSession, getHostedPaymentLink, hasHostedPaymentLink, syncWorkspaceSubscription } from '../lib/billing';
 import { getWorkspaceSummary } from '../lib/workspaces';
 import { pb } from '../lib/pocketbase';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
@@ -16,6 +16,8 @@ export function BillingPage() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState('');
+
+  const pendingWorkspaceStorageKey = 'billing_pending_workspace_id';
 
   async function loadSummary(workspaceId) {
     setIsLoading(true);
@@ -99,6 +101,53 @@ export function BillingPage() {
     };
   }, [workspace?.id]);
 
+  useEffect(() => {
+    if (!workspace?.id) {
+      return;
+    }
+
+    const pendingWorkspaceId = window.localStorage.getItem(pendingWorkspaceStorageKey);
+
+    if (pendingWorkspaceId !== workspace.id) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function syncAfterHostedPayment() {
+      setIsConfirming(true);
+
+      try {
+        const result = await syncWorkspaceSubscription({
+          workspaceId: workspace.id,
+          userEmail: pb.authStore.record?.email,
+        });
+
+        if (!cancelled) {
+          await loadSummary(workspace.id);
+
+          if (result.subscription_status === 'active' || result.subscription_status === 'trialing') {
+            window.localStorage.removeItem(pendingWorkspaceStorageKey);
+          }
+        }
+      } catch (syncError) {
+        if (!cancelled) {
+          setError(syncError?.message || 'Failed to sync subscription status.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsConfirming(false);
+        }
+      }
+    }
+
+    syncAfterHostedPayment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id]);
+
   async function handleUpgrade() {
     if (!summary?.workspace?.id) {
       return;
@@ -127,6 +176,8 @@ export function BillingPage() {
       if (!url) {
         throw new Error('Checkout URL is not configured.');
       }
+
+      window.localStorage.setItem(pendingWorkspaceStorageKey, summary.workspace.id);
 
       window.location.href = url;
     } catch (upgradeError) {

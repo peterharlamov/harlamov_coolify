@@ -118,3 +118,31 @@ export async function confirmBillingSession({ sessionId, workspaceId }) {
 
   return data || {};
 }
+
+export async function syncWorkspaceSubscription({ workspaceId, userEmail }) {
+  let response;
+
+  try {
+    response = await fetch(`${normalizeApiBaseUrl(apiUrl)}/api/billing/sync-workspace-subscription`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ workspaceId, userEmail }),
+    });
+  } catch (networkError) {
+    throw new Error(networkError?.message || 'Network error while syncing workspace subscription.');
+  }
+
+  const { data, rawText } = await parseApiResponse(response);
+
+  if (!response.ok) {
+    const errorMessage =
+      data?.error ||
+      (rawText ? rawText.trim() : '') ||
+      `Subscription sync failed with status ${response.status}.`;
+    throw new Error(errorMessage);
+  }
+
+  return data || {};
+}

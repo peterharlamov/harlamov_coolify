@@ -55,6 +55,66 @@ async function updateWorkspace(workspaceId, payload) {
   return pb.collection(workspacesCollection).update(workspaceId, payload);
 }
 
+async function resolveStripeCustomerId({ workspace, userEmail }) {
+  const existingCustomerId = workspace?.stripe_customer_id || '';
+  if (existingCustomerId) {
+    return existingCustomerId;
+  }
+
+  if (!userEmail) {
+    return '';
+  }
+
+  const customers = await stripe.customers.list({
+    email: userEmail,
+    limit: 1,
+  });
+
+  return customers.data?.[0]?.id || '';
+}
+
+async function syncWorkspaceSubscriptionStatus({ workspaceId, userEmail }) {
+  const workspace = await getWorkspace(workspaceId);
+  const customerId = await resolveStripeCustomerId({ workspace, userEmail });
+
+  if (!customerId) {
+    return {
+      workspace,
+      status: workspace.subscription_status || 'inactive',
+      updated: false,
+    };
+  }
+
+  const subscriptions = await stripe.subscriptions.list({
+    customer: customerId,
+    status: 'all',
+    limit: 10,
+  });
+
+  const activeLike = subscriptions.data.find((item) => item.status === 'active' || item.status === 'trialing');
+  const latest = subscriptions.data[0] || null;
+  const selected = activeLike || latest;
+
+  const selectedStatus = selected?.status || 'inactive';
+  const isActiveLike = selectedStatus === 'active' || selectedStatus === 'trialing';
+
+  const payload = {
+    subscription_status: isActiveLike ? selectedStatus : selectedStatus === 'past_due' ? 'past_due' : selectedStatus === 'canceled' ? 'canceled' : 'inactive',
+    device_limit: isActiveLike ? 1000000 : 10,
+    stripe_customer_id: customerId,
+    stripe_subscription_id: selected?.id || '',
+    stripe_price_id: selected?.items?.data?.[0]?.price?.id || workspace.stripe_price_id || stripePriceId,
+  };
+
+  const updatedWorkspace = await updateWorkspace(workspaceId, payload);
+
+  return {
+    workspace: updatedWorkspace,
+    status: payload.subscription_status,
+    updated: true,
+  };
+}
+
 async function findUserByEmail(email) {
   if (!email) {
     return null;
@@ -312,6 +372,26 @@ app.post('/api/billing/confirm-session', async (req, res) => {
     });
   } catch (error) {
     jsonError(res, 500, error.message || 'Failed to confirm Stripe checkout session.');
+  }
+});
+
+app.post('/api/billing/sync-workspace-subscription', async (req, res) => {
+  const { workspaceId, userEmail } = req.body || {};
+
+  if (!workspaceId) {
+    jsonError(res, 400, 'workspaceId is required.');
+    return;
+  }
+
+  try {
+    const result = await syncWorkspaceSubscriptionStatus({ workspaceId, userEmail });
+    res.json({
+      workspaceId,
+      subscription_status: result.status,
+      updated: result.updated,
+    });
+  } catch (error) {
+    jsonError(res, 500, error.message || 'Failed to sync workspace subscription status.');
   }
 });
 
