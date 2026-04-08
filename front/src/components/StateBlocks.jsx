@@ -33,6 +33,9 @@ export function EmptyState({ title = 'No data yet', message = 'Add your first re
 }
 
 export function NoWorkspaceState({ message, onRetry, isAdmin }) {
+  const normalizedMessage = String(message || '');
+  const schemaMissing = normalizedMessage.includes("PocketBase collection 'workspaces' is missing");
+
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-soft">
       <h3 className="text-lg font-semibold text-amber-900">Workspace required</h3>
@@ -43,7 +46,7 @@ export function NoWorkspaceState({ message, onRetry, isAdmin }) {
           onClick={onRetry}
           className="mt-4 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
         >
-          {isAdmin ? 'Recover workspace' : 'Retry'}
+          {schemaMissing ? 'Retry after schema setup' : isAdmin ? 'Recover workspace' : 'Retry'}
         </button>
       ) : null}
     </div>

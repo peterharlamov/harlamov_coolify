@@ -1,61 +1,64 @@
-# PocketBase Schema and Rules Changes
+# PocketBase Schema Requirements (Workspace Billing)
 
-Apply these changes in PocketBase Admin UI.
+The frontend now expects workspace-based billing and limits. If `workspaces` does not exist,
+Billing/Devices/Dashboard cannot load correctly.
 
-## 1) users (auth collection)
+## Required collections
 
-Required fields:
-- name (text)
-- role (select: admin, worker)
-- workspace (relation -> workspaces, maxSelect=1)
+### 1) workspaces (base collection)
 
-Rules:
-- listRule: @request.auth.role = "admin" || id = @request.auth.id
-- viewRule: @request.auth.role = "admin" || id = @request.auth.id
-- updateRule: @request.auth.role = "admin" || id = @request.auth.id
-- options.manageRule: @request.auth.role = "admin"
-
-## 2) workspaces (new base collection)
+Create collection: `workspaces`
 
 Fields:
-- name (text, required)
-- owner (relation -> users, maxSelect=1)
-- subscription_status (select: inactive, trialing, active, past_due, canceled; default inactive)
-- device_limit (number, default 10)
-- stripe_customer_id (text)
-- stripe_subscription_id (text)
-- stripe_price_id (text)
+- `name` (text, required)
+- `owner` (relation -> `users`, maxSelect: 1)
+- `subscription_status` (select: `inactive`, `trialing`, `active`, `past_due`, `canceled`; default `inactive`)
+- `device_limit` (number, default `10`)
+- `stripe_customer_id` (text)
+- `stripe_subscription_id` (text)
+- `stripe_price_id` (text)
 
-Recommended rules:
-- listRule: owner = @request.auth.id || id = @request.auth.workspace || @request.auth.role = "admin"
-- viewRule: owner = @request.auth.id || id = @request.auth.workspace || @request.auth.role = "admin"
-- createRule: @request.auth.role = "admin"
-- updateRule: owner = @request.auth.id || @request.auth.role = "admin"
-- deleteRule: @request.auth.role = "admin"
+Recommended API rules:
+- listRule: `owner = @request.auth.id || id = @request.auth.workspace || @request.auth.role = "admin"`
+- viewRule: `owner = @request.auth.id || id = @request.auth.workspace || @request.auth.role = "admin"`
+- createRule: `@request.auth.role = "admin"`
+- updateRule: `owner = @request.auth.id || @request.auth.role = "admin"`
+- deleteRule: `@request.auth.role = "admin"`
 
-## 3) devices collection updates
+### 2) users (auth collection)
 
-Add field:
-- workspace (relation -> workspaces, maxSelect=1, required)
+Ensure fields exist:
+- `name` (text)
+- `role` (select: `admin`, `worker`)
+- `workspace` (relation -> `workspaces`, maxSelect: 1)
 
-Recommended rules:
-- listRule: @request.auth.id != "" && workspace = @request.auth.workspace
-- viewRule: @request.auth.id != "" && workspace = @request.auth.workspace
-- createRule: @request.auth.role = "admin" && workspace = @request.auth.workspace
-- updateRule: @request.auth.role = "admin" && workspace = @request.auth.workspace
-- deleteRule: @request.auth.role = "admin" && workspace = @request.auth.workspace
+Recommended API rules:
+- listRule: `@request.auth.role = "admin" || id = @request.auth.id`
+- viewRule: `@request.auth.role = "admin" || id = @request.auth.id`
+- updateRule: `@request.auth.role = "admin" || id = @request.auth.id`
+- options.manageRule: `@request.auth.role = "admin"`
 
-## 4) device_notes collection updates
+### 3) devices (base collection)
 
-Keep notes scoped by related device workspace in your app logic and rules. Basic rules can remain, but ideally bind to same workspace as parent device.
+Ensure field exists:
+- `workspace` (relation -> `workspaces`, maxSelect: 1, required)
 
-## 5) Server-side device cap enforcement
+Recommended API rules:
+- listRule: `@request.auth.id != "" && workspace = @request.auth.workspace`
+- viewRule: `@request.auth.id != "" && workspace = @request.auth.workspace`
+- createRule: `@request.auth.role = "admin" && workspace = @request.auth.workspace`
+- updateRule: `@request.auth.role = "admin" && workspace = @request.auth.workspace`
+- deleteRule: `@request.auth.role = "admin" && workspace = @request.auth.workspace`
+
+### 4) device_notes (base collection)
+
+Keep notes scoped to the same workspace as parent device in rules/app logic.
+
+## Optional: server-side device cap enforcement
 
 Deploy hook file:
-- pocketbase/pb_hooks/devices-limit.pb.js
+- `pocketbase/pb_hooks/devices-limit.pb.js`
 
-This hook enforces:
-- free/inactive workspace -> max device_limit (default 10)
-- active/trialing workspace -> unlimited creation
-
-This is server-side enforcement inside PocketBase (not only frontend).
+Hook behavior:
+- `inactive` workspace: enforce `device_limit` (default `10`)
+- `active`/`trialing` workspace: unlimited create
