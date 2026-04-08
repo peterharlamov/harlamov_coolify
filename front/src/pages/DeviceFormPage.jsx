@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { createDevice, getDeviceById, updateDevice } from '../lib/devices';
 import { pb } from '../lib/pocketbase';
-import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
+import { getWorkspaceSummary } from '../lib/workspaces';
 import { DEVICE_STATUSES, DEVICE_TYPES, STATUS_LABELS, TYPE_LABELS } from '../utils/inventory';
-import { ErrorState, LoadingState } from '../components/StateBlocks';
+import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
+import { useAuth } from '../hooks/useAuth';
 
 const initialForm = {
   name: '',
@@ -17,6 +18,9 @@ const initialForm = {
 };
 
 export function DeviceFormPage() {
+  const { user, workspace, workspaceError, isWorkspaceReady, refreshWorkspace } = useAuth();
+  const isAdmin = (user?.role || 'worker') === 'admin';
+
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
@@ -31,14 +35,14 @@ export function DeviceFormPage() {
 
   const pageTitle = useMemo(() => (isEdit ? 'Edit device' : 'Add device'), [isEdit]);
 
-  async function loadData() {
+  async function loadData(workspaceId) {
     setIsLoading(true);
     setLoadError('');
 
     try {
       const usersPromise = pb.collection('users').getList(1, 200, { sort: 'name' });
       const devicePromise = isEdit ? getDeviceById(id) : Promise.resolve(null);
-      const workspacePromise = getWorkspaceSummary(getCurrentWorkspaceId());
+      const workspacePromise = getWorkspaceSummary(workspaceId);
 
       const [usersResponse, device, workspaceData] = await Promise.all([usersPromise, devicePromise, workspacePromise]);
       setUsers(usersResponse.items);
@@ -63,8 +67,17 @@ export function DeviceFormPage() {
   }
 
   useEffect(() => {
-    loadData();
-  }, [id]);
+    if (!isWorkspaceReady) {
+      return;
+    }
+
+    if (!workspace?.id) {
+      setIsLoading(false);
+      return;
+    }
+
+    loadData(workspace.id);
+  }, [id, isWorkspaceReady, workspace?.id]);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -85,7 +98,12 @@ export function DeviceFormPage() {
       if (isEdit) {
         await updateDevice(id, payload);
       } else {
-        const workspaceId = getCurrentWorkspaceId();
+        const workspaceId = workspace?.id;
+
+        if (!workspaceId) {
+          throw new Error('Current user is not attached to a workspace.');
+        }
+
         const summary = await getWorkspaceSummary(workspaceId);
         const limitReached = !summary.isUnlimited && summary.usedDevices >= summary.limit;
 
@@ -105,12 +123,16 @@ export function DeviceFormPage() {
     }
   }
 
-  if (isLoading) {
+  if (!isWorkspaceReady || isLoading) {
     return <LoadingState message="Loading form..." />;
   }
 
+  if (!workspace?.id) {
+    return <NoWorkspaceState message={workspaceError} onRetry={refreshWorkspace} isAdmin={isAdmin} />;
+  }
+
   if (loadError) {
-    return <ErrorState message={loadError} onRetry={loadData} />;
+    return <ErrorState message={loadError} onRetry={() => loadData(workspace.id)} />;
   }
 
   const createLimitReached = Boolean(!isEdit && workspaceSummary && !workspaceSummary.isUnlimited && workspaceSummary.usedDevices >= workspaceSummary.limit);

@@ -21,6 +21,27 @@ export function createDevice(data) {
   return collection.create(data);
 }
 
+export function listLegacyDevicesWithoutWorkspace({ page = 1, perPage = 200 } = {}) {
+  return collection.getList(page, perPage, {
+    sort: '-created',
+    filter: 'workspace = ""',
+  });
+}
+
+export async function migrateLegacyDevicesToWorkspace(workspaceId) {
+  const response = await listLegacyDevicesWithoutWorkspace({ page: 1, perPage: 500 });
+
+  await Promise.all(
+    response.items.map((device) =>
+      collection.update(device.id, {
+        workspace: workspaceId,
+      })
+    )
+  );
+
+  return response.items.length;
+}
+
 export function updateDevice(id, data) {
   return collection.update(id, data);
 }

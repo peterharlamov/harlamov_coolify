@@ -1,22 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { countDevicesByStatus, listDevices } from '../lib/devices';
-import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
+import { getWorkspaceSummary } from '../lib/workspaces';
 import { DEVICE_STATUSES, STATUS_LABELS } from '../utils/inventory';
-import { ErrorState, LoadingState } from '../components/StateBlocks';
+import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
+import { useAuth } from '../hooks/useAuth';
 
 export function DashboardPage() {
+  const { user, workspace, workspaceError, isWorkspaceReady, refreshWorkspace } = useAuth();
+  const isAdmin = (user?.role || 'worker') === 'admin';
+
   const [stats, setStats] = useState({ total: 0, statuses: {} });
   const [workspaceSummary, setWorkspaceSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  async function loadStats() {
+  const reload = () => {
+    if (workspace?.id) {
+      loadStats(workspace.id);
+    }
+  };
+
+  async function loadStats(workspaceId) {
     setIsLoading(true);
     setError('');
 
     try {
-      const workspaceId = getCurrentWorkspaceId();
       const all = await listDevices({ workspaceId, page: 1, perPage: 1 });
       const statusResults = await Promise.all(DEVICE_STATUSES.map((status) => countDevicesByStatus(status, workspaceId)));
       const workspaceData = await getWorkspaceSummary(workspaceId);
@@ -39,8 +48,19 @@ export function DashboardPage() {
   }
 
   useEffect(() => {
-    loadStats();
-  }, []);
+    if (!isWorkspaceReady) {
+      return;
+    }
+
+    if (!workspace?.id) {
+      setIsLoading(false);
+      setStats({ total: 0, statuses: {} });
+      setWorkspaceSummary(null);
+      return;
+    }
+
+    loadStats(workspace.id);
+  }, [isWorkspaceReady, workspace?.id]);
 
   const cards = useMemo(
     () => [
@@ -72,8 +92,12 @@ export function DashboardPage() {
     return <LoadingState message="Loading dashboard..." />;
   }
 
+  if (!workspace?.id) {
+    return <NoWorkspaceState message={workspaceError} onRetry={refreshWorkspace} isAdmin={isAdmin} />;
+  }
+
   if (error) {
-    return <ErrorState message={error} onRetry={loadStats} />;
+    return <ErrorState message={error} onRetry={reload} />;
   }
 
   return (

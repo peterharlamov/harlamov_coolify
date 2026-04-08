@@ -2,18 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DeviceTable } from '../components/DeviceTable';
 import { WorkersTable } from '../components/WorkersTable';
-import { EmptyState, ErrorState, LoadingState } from '../components/StateBlocks';
-import { deleteDevice, listDevices } from '../lib/devices';
+import { EmptyState, ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
+import { deleteDevice, listDevices, listLegacyDevicesWithoutWorkspace, migrateLegacyDevicesToWorkspace } from '../lib/devices';
 import { listWorkers } from '../lib/users';
-import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
+import { getWorkspaceSummary } from '../lib/workspaces';
 import { useAuth } from '../hooks/useAuth';
 
 export function DevicesPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { user, workspace, workspaceError, isWorkspaceReady, refreshWorkspace } = useAuth();
+  const isAdmin = (user?.role || 'worker') === 'admin';
 
   const [items, setItems] = useState([]);
   const [workers, setWorkers] = useState([]);
+  const [legacyDevicesCount, setLegacyDevicesCount] = useState(0);
+  const [isMigratingLegacy, setIsMigratingLegacy] = useState(false);
   const [workspaceSummary, setWorkspaceSummary] = useState(null);
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -35,22 +37,27 @@ export function DevicesPage() {
     });
   }, [items, query]);
 
-  async function loadDevices() {
+  async function loadDevices(workspaceId) {
     setIsLoading(true);
     setError('');
 
     try {
-      const workspaceId = getCurrentWorkspaceId();
-
       const devicesPromise = listDevices({ workspaceId });
       const workersPromise = isAdmin ? listWorkers() : Promise.resolve({ items: [] });
       const workspacePromise = getWorkspaceSummary(workspaceId);
+      const legacyPromise = isAdmin ? listLegacyDevicesWithoutWorkspace({ page: 1, perPage: 1 }) : Promise.resolve({ totalItems: 0 });
 
-      const [devicesResponse, workersResponse, workspaceData] = await Promise.all([devicesPromise, workersPromise, workspacePromise]);
+      const [devicesResponse, workersResponse, workspaceData, legacyResponse] = await Promise.all([
+        devicesPromise,
+        workersPromise,
+        workspacePromise,
+        legacyPromise,
+      ]);
 
       setItems(devicesResponse.items);
       setWorkers(workersResponse.items);
       setWorkspaceSummary(workspaceData);
+      setLegacyDevicesCount(legacyResponse.totalItems || 0);
     } catch (loadError) {
       setError(loadError?.message || 'Failed to fetch devices.');
     } finally {
@@ -59,8 +66,39 @@ export function DevicesPage() {
   }
 
   useEffect(() => {
-    loadDevices();
-  }, [isAdmin]);
+    if (!isWorkspaceReady) {
+      return;
+    }
+
+    if (!workspace?.id) {
+      setIsLoading(false);
+      setItems([]);
+      setWorkers([]);
+      setWorkspaceSummary(null);
+      setLegacyDevicesCount(0);
+      return;
+    }
+
+    loadDevices(workspace.id);
+  }, [isAdmin, isWorkspaceReady, workspace?.id]);
+
+  async function handleMigrateLegacyDevices() {
+    if (!workspace?.id || !legacyDevicesCount) {
+      return;
+    }
+
+    setIsMigratingLegacy(true);
+
+    try {
+      const migrated = await migrateLegacyDevicesToWorkspace(workspace.id);
+      window.alert(`Migrated ${migrated} legacy devices to current workspace.`);
+      await loadDevices(workspace.id);
+    } catch (migrationError) {
+      window.alert(migrationError?.message || 'Failed to migrate legacy devices.');
+    } finally {
+      setIsMigratingLegacy(false);
+    }
+  }
 
   async function handleDelete(device) {
     const confirmed = window.confirm(`Delete device "${device.name}"? This action cannot be undone.`);
@@ -76,12 +114,16 @@ export function DevicesPage() {
     }
   }
 
-  if (isLoading) {
+  if (!isWorkspaceReady || isLoading) {
     return <LoadingState message="Loading devices..." />;
   }
 
+  if (!workspace?.id) {
+    return <NoWorkspaceState message={workspaceError} onRetry={refreshWorkspace} isAdmin={isAdmin} />;
+  }
+
   if (error) {
-    return <ErrorState message={error} onRetry={loadDevices} />;
+    return <ErrorState message={error} onRetry={() => loadDevices(workspace.id)} />;
   }
 
   const limitReached = Boolean(workspaceSummary && !workspaceSummary.isUnlimited && workspaceSummary.usedDevices >= workspaceSummary.limit);
@@ -122,6 +164,22 @@ export function DevicesPage() {
           <Link to="/billing" className="mt-2 inline-block font-semibold text-amber-900 underline">
             Open billing
           </Link>
+        </div>
+      ) : null}
+
+      {isAdmin && legacyDevicesCount > 0 ? (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+          <p>
+            Found {legacyDevicesCount} legacy device{legacyDevicesCount > 1 ? 's' : ''} without workspace assignment.
+          </p>
+          <button
+            type="button"
+            onClick={handleMigrateLegacyDevices}
+            disabled={isMigratingLegacy}
+            className="mt-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isMigratingLegacy ? 'Migrating...' : 'Attach legacy devices'}
+          </button>
         </div>
       ) : null}
 

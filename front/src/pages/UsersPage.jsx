@@ -2,11 +2,11 @@ import { useMemo, useState, useEffect } from 'react';
 import { listUsers, updateUserRole } from '../lib/users';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateBlocks';
 import { UsersTable } from '../components/UsersTable';
-import { pb } from '../lib/pocketbase';
+import { useAuth } from '../hooks/useAuth';
 
 export function UsersPage() {
-  const currentRole = pb.authStore.record?.role;
-  const isAdmin = currentRole === 'admin';
+  const { user } = useAuth();
+  const isAdmin = (user?.role || 'worker') === 'admin';
 
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -113,7 +113,7 @@ export function UsersPage() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-soft">
             <h3 className="text-lg font-bold text-slate-900">Edit role</h3>
-            <p className="mt-1 text-sm text-slate-600">Update role for {editingUser.name || editingUser.email}.</p>
+            <p className="mt-1 text-sm text-slate-600">Update role for {editingUser.name || editingUser.email || 'No email'}.</p>
 
             <form onSubmit={handleSaveRole} className="mt-4 space-y-4">
               <div>

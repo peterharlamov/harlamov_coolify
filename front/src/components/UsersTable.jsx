@@ -30,14 +30,14 @@ export function UsersTable({ users, canEditRole, onEditRole }) {
             {users.map((record) => (
               <tr key={record.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-900">{record.name || '-'}</td>
-                <td className="px-4 py-3 text-slate-600">{record.email}</td>
+                <td className="px-4 py-3 text-slate-600">{record.email || 'No email'}</td>
                 <td className="px-4 py-3">
                   <RoleBadge role={record.role} />
                 </td>
                 <td className="px-4 py-3">
                   <VerifiedBadge verified={record.verified} />
                 </td>
-                <td className="px-4 py-3 text-slate-600">{new Date(record.created).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-slate-600">{record.created ? new Date(record.created).toLocaleDateString() : '-'}</td>
                 <td className="px-4 py-3 text-right">
                   {canEditRole ? (
                     <button

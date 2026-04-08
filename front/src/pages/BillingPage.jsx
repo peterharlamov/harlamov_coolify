@@ -1,21 +1,24 @@
 import { useEffect, useState } from 'react';
 import { createSubscriptionCheckoutSession } from '../lib/billing';
-import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
+import { getWorkspaceSummary } from '../lib/workspaces';
 import { pb } from '../lib/pocketbase';
-import { ErrorState, LoadingState } from '../components/StateBlocks';
+import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
+import { useAuth } from '../hooks/useAuth';
 
 export function BillingPage() {
+  const { user, workspace, workspaceError, isWorkspaceReady, refreshWorkspace } = useAuth();
+  const isAdmin = (user?.role || 'worker') === 'admin';
+
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState('');
 
-  async function loadSummary() {
+  async function loadSummary(workspaceId) {
     setIsLoading(true);
     setError('');
 
     try {
-      const workspaceId = getCurrentWorkspaceId();
       const nextSummary = await getWorkspaceSummary(workspaceId);
       setSummary(nextSummary);
     } catch (loadError) {
@@ -26,8 +29,18 @@ export function BillingPage() {
   }
 
   useEffect(() => {
-    loadSummary();
-  }, []);
+    if (!isWorkspaceReady) {
+      return;
+    }
+
+    if (!workspace?.id) {
+      setIsLoading(false);
+      setSummary(null);
+      return;
+    }
+
+    loadSummary(workspace.id);
+  }, [isWorkspaceReady, workspace?.id]);
 
   async function handleUpgrade() {
     if (!summary?.workspace?.id) {
@@ -50,12 +63,16 @@ export function BillingPage() {
     }
   }
 
-  if (isLoading) {
+  if (!isWorkspaceReady || isLoading) {
     return <LoadingState message="Loading billing..." />;
   }
 
+  if (!workspace?.id) {
+    return <NoWorkspaceState message={workspaceError} onRetry={refreshWorkspace} isAdmin={isAdmin} />;
+  }
+
   if (error && !summary) {
-    return <ErrorState message={error} onRetry={loadSummary} />;
+    return <ErrorState message={error} onRetry={() => loadSummary(workspace.id)} />;
   }
 
   const planName = summary.isUnlimited ? 'Unlimited' : 'Free';
