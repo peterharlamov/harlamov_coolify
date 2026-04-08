@@ -16,10 +16,45 @@ let workspaceCollectionState = COLLECTION_STATE.unknown;
 
 function normalizeRelationId(value) {
   if (Array.isArray(value)) {
-    return value[0] || '';
+    const first = value[0];
+
+    if (!first) {
+      return '';
+    }
+
+    if (typeof first === 'object') {
+      return typeof first.id === 'string' ? first.id : '';
+    }
+
+    return typeof first === 'string' ? first : '';
   }
 
   return typeof value === 'string' ? value : '';
+}
+
+function getExpandedWorkspaceId(expandValue) {
+  if (!expandValue) {
+    return '';
+  }
+
+  if (Array.isArray(expandValue)) {
+    return normalizeRelationId(expandValue);
+  }
+
+  if (typeof expandValue === 'object') {
+    return typeof expandValue.id === 'string' ? expandValue.id : '';
+  }
+
+  return '';
+}
+
+export function getWorkspaceIdFromUserRecord(user) {
+  const directId = normalizeRelationId(user?.workspace);
+  if (directId) {
+    return directId;
+  }
+
+  return getExpandedWorkspaceId(user?.expand?.workspace);
 }
 
 function isNotFound(error) {
@@ -107,7 +142,7 @@ export async function ensureWorkspaceForCurrentUser(user) {
   }
 
   const role = user.role || 'worker';
-  const workspaceId = normalizeRelationId(user.workspace);
+  const workspaceId = getWorkspaceIdFromUserRecord(user);
 
   if (workspaceId) {
     try {
@@ -152,7 +187,7 @@ export async function ensureWorkspaceForCurrentUser(user) {
 }
 
 export function getCurrentWorkspaceId() {
-  return normalizeRelationId(pb.authStore.record?.workspace);
+  return getWorkspaceIdFromUserRecord(pb.authStore.record);
 }
 
 export async function getWorkspaceById(id) {

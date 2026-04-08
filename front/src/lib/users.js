@@ -17,7 +17,7 @@ export function normalizeUserRecord(record) {
 
   if (!email) {
     if (visibility === false) {
-      emailDisplay = 'Email hidden';
+      emailDisplay = 'Hidden';
       emailStatus = 'hidden';
     } else {
       emailDisplay = 'Missing in database';

@@ -27,6 +27,13 @@ const pb = new PocketBase(pocketbaseUrl);
 
 pb.autoCancellation(false);
 
+function jsonError(res, status, message, details) {
+  res.status(status).json({
+    error: message,
+    ...(details ? { details } : {}),
+  });
+}
+
 async function ensureAdminAuth() {
   if (pb.authStore.isValid && pb.authStore.model?.email === pbAdminEmail) {
     return;
@@ -52,7 +59,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
     const signature = req.headers['stripe-signature'];
     event = stripe.webhooks.constructEvent(req.body, signature, stripeWebhookSecret);
   } catch (error) {
-    res.status(400).send(`Webhook Error: ${error.message}`);
+    jsonError(res, 400, `Webhook Error: ${error.message}`);
     return;
   }
 
@@ -92,7 +99,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
     res.json({ received: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    jsonError(res, 500, error.message || 'Webhook handling failed.');
   }
 });
 
@@ -103,7 +110,7 @@ app.post('/api/create-subscription-checkout-session', async (req, res) => {
   const { workspaceId, userEmail } = req.body || {};
 
   if (!workspaceId) {
-    res.status(400).json({ error: 'workspaceId is required.' });
+    jsonError(res, 400, 'workspaceId is required.');
     return;
   }
 
@@ -143,10 +150,27 @@ app.post('/api/create-subscription-checkout-session', async (req, res) => {
       },
     });
 
+    if (!session?.url) {
+      jsonError(res, 502, 'Stripe checkout session did not return a redirect URL.');
+      return;
+    }
+
     res.json({ url: session.url });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    jsonError(res, 500, error.message || 'Failed to create subscription checkout session.');
   }
+});
+
+app.use('/api', (_req, res) => {
+  jsonError(res, 404, 'API endpoint not found.');
+});
+
+app.use((error, _req, res, _next) => {
+  if (res.headersSent) {
+    return;
+  }
+
+  jsonError(res, error?.status || 500, error?.message || 'Internal server error.');
 });
 
 app.listen(PORT, () => {

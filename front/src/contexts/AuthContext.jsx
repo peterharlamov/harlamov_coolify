@@ -18,7 +18,21 @@ export function AuthProvider({ children }) {
   const [oauthProviders, setOauthProviders] = useState([]);
 
   const resolveWorkspace = useCallback(async () => {
-    const currentUser = pb.authStore.model;
+    let currentUser = pb.authStore.model;
+
+    if (pb.authStore.isValid) {
+      try {
+        const authData = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
+        currentUser = authData?.record || pb.authStore.model;
+      } catch (refreshError) {
+        devLog('auth.refresh.error', {
+          message: refreshError?.message,
+          status: refreshError?.status,
+          data: refreshError?.data,
+        });
+      }
+    }
+
     devLog('auth.currentUser', currentUser);
 
     if (!currentUser || !pb.authStore.isValid) {
