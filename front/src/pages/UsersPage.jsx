@@ -113,7 +113,7 @@ export function UsersPage() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-soft">
             <h3 className="text-lg font-bold text-slate-900">Edit role</h3>
-            <p className="mt-1 text-sm text-slate-600">Update role for {editingUser.name || editingUser.emailDisplay || 'Missing in database'}.</p>
+            <p className="mt-1 text-sm text-slate-600">Update role for {editingUser.name || editingUser.emailDisplay || 'Email hidden'}.</p>
 
             <form onSubmit={handleSaveRole} className="mt-4 space-y-4">
               <div>

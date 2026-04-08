@@ -30,7 +30,7 @@ export function UsersTable({ users, canEditRole, onEditRole }) {
             {users.map((record) => (
               <tr key={record.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-900">{record.name || '-'}</td>
-                <td className="px-4 py-3 text-slate-600">{record.emailDisplay || 'Missing in database'}</td>
+                <td className="px-4 py-3 text-slate-600">{record.emailDisplay}</td>
                 <td className="px-4 py-3">
                   <RoleBadge role={record.role} />
                 </td>

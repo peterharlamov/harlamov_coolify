@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { createDevice, getDeviceById, updateDevice } from '../lib/devices';
 import { pb } from '../lib/pocketbase';
+import { PB_COLLECTIONS } from '../lib/pbCollections';
 import { getWorkspaceSummary } from '../lib/workspaces';
 import { DEVICE_STATUSES, DEVICE_TYPES, STATUS_LABELS, TYPE_LABELS } from '../utils/inventory';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
@@ -40,7 +41,7 @@ export function DeviceFormPage() {
     setLoadError('');
 
     try {
-      const usersPromise = pb.collection('users').getList(1, 200, { sort: 'name' });
+      const usersPromise = pb.collection(PB_COLLECTIONS.USERS_COLLECTION).getList(1, 200, { sort: 'name' });
       const devicePromise = isEdit ? getDeviceById(id) : Promise.resolve(null);
       const workspacePromise = getWorkspaceSummary(workspaceId);
 

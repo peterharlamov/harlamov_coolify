@@ -16,6 +16,7 @@ const clientUrl = process.env.CLIENT_URL;
 const pocketbaseUrl = process.env.POCKETBASE_URL;
 const pbAdminEmail = process.env.PB_ADMIN_EMAIL;
 const pbAdminPassword = process.env.PB_ADMIN_PASSWORD;
+const workspacesCollection = process.env.PB_WORKSPACES_COLLECTION || 'workspaces';
 
 if (!stripeSecretKey || !stripeWebhookSecret || !stripePriceId || !clientUrl || !pocketbaseUrl || !pbAdminEmail || !pbAdminPassword) {
   throw new Error('Missing required backend environment variables.');
@@ -36,12 +37,12 @@ async function ensureAdminAuth() {
 
 async function getWorkspace(workspaceId) {
   await ensureAdminAuth();
-  return pb.collection('workspaces').getOne(workspaceId);
+  return pb.collection(workspacesCollection).getOne(workspaceId);
 }
 
 async function updateWorkspace(workspaceId, payload) {
   await ensureAdminAuth();
-  return pb.collection('workspaces').update(workspaceId, payload);
+  return pb.collection(workspacesCollection).update(workspaceId, payload);
 }
 
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {

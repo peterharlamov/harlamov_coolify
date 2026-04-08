@@ -1,6 +1,7 @@
 import { pb } from './pocketbase';
+import { PB_COLLECTIONS } from './pbCollections';
 
-const collection = pb.collection('device_notes');
+const collection = pb.collection(PB_COLLECTIONS.DEVICE_NOTES_COLLECTION);
 
 export function listDeviceNotes(deviceId) {
   return collection.getList(1, 200, {

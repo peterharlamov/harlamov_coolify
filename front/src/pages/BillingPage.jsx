@@ -5,6 +5,7 @@ import { pb } from '../lib/pocketbase';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
 import { useAuth } from '../hooks/useAuth';
 import { devLog } from '../utils/devLogger';
+import { PB_COLLECTIONS } from '../lib/pbCollections';
 
 export function BillingPage() {
   const { user, workspace, workspaceError, isWorkspaceReady, refreshWorkspace } = useAuth();
@@ -30,6 +31,7 @@ export function BillingPage() {
         message: loadError?.message,
         status: loadError?.status,
         data: loadError?.data,
+        configuredCollections: PB_COLLECTIONS,
       });
     } finally {
       setIsLoading(false);

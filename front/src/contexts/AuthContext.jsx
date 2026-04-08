@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { pb } from '../lib/pocketbase';
 import { ensureWorkspaceForCurrentUser, getWorkspaceById } from '../lib/workspaces';
 import { devLog } from '../utils/devLogger';
+import { PB_COLLECTIONS } from '../lib/pbCollections';
 
 export const AuthContext = createContext(null);
 
@@ -87,7 +88,7 @@ export function AuthProvider({ children }) {
 
     async function loadAuthMethods() {
       try {
-        const methods = await pb.collection('users').listAuthMethods();
+        const methods = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).listAuthMethods();
         if (cancelled) {
           return;
         }
@@ -108,12 +109,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function loginWithPassword(email, password) {
-    const authData = await pb.collection('users').authWithPassword(email, password);
+    const authData = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authWithPassword(email, password);
     return authData.record;
   }
 
   async function register({ name, email, password }) {
-    await pb.collection('users').create({
+    await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).create({
       name,
       email,
       password,
@@ -121,16 +122,16 @@ export function AuthProvider({ children }) {
       role: 'worker',
     });
 
-    const authData = await pb.collection('users').authWithPassword(email, password);
+    const authData = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authWithPassword(email, password);
     return authData.record;
   }
 
   async function loginWithOAuth(provider) {
-    const authData = await pb.collection('users').authWithOAuth2({ provider });
+    const authData = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authWithOAuth2({ provider });
 
     if (!authData.record.role) {
       try {
-        await pb.collection('users').update(authData.record.id, { role: 'worker' });
+        await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).update(authData.record.id, { role: 'worker' });
       } catch {
         // Ignore update failures so OAuth login still succeeds.
       }

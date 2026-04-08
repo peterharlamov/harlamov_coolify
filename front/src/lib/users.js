@@ -1,7 +1,8 @@
 import { pb } from './pocketbase';
 import { devTable } from '../utils/devLogger';
+import { PB_COLLECTIONS } from './pbCollections';
 
-const collection = pb.collection('users');
+const collection = pb.collection(PB_COLLECTIONS.USERS_COLLECTION);
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -9,12 +10,28 @@ function normalizeString(value) {
 
 export function normalizeUserRecord(record) {
   const email = normalizeString(record?.email);
+  const visibility = record?.emailVisibility;
+
+  let emailDisplay = email;
+  let emailStatus = 'available';
+
+  if (!email) {
+    if (visibility === false) {
+      emailDisplay = 'Email hidden';
+      emailStatus = 'hidden';
+    } else {
+      emailDisplay = 'Missing in database';
+      emailStatus = 'missing';
+    }
+  }
 
   return {
     ...record,
     name: normalizeString(record?.name),
     email,
-    emailDisplay: email || 'Missing in database',
+    emailDisplay,
+    emailStatus,
+    emailVisibility: visibility,
     role: normalizeString(record?.role) || 'worker',
     verified: Boolean(record?.verified),
     created: normalizeString(record?.created) || normalizeString(record?.updated),

@@ -1,6 +1,7 @@
 import { pb } from './pocketbase';
+import { PB_COLLECTIONS } from './pbCollections';
 
-const collection = pb.collection('devices');
+const collection = pb.collection(PB_COLLECTIONS.DEVICES_COLLECTION);
 
 function workspaceFilterExpression(workspaceId) {
   if (!workspaceId) {

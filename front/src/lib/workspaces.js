@@ -1,10 +1,8 @@
 import { pb } from './pocketbase';
 import { listDevices } from './devices';
+import { PB_COLLECTIONS } from './pbCollections';
 
 const DEFAULT_WORKSPACE_NAME = 'Office Device Inventory';
-const WORKSPACE_COLLECTION_CANDIDATES = ['workspaces', 'workspace'];
-
-let cachedWorkspaceCollectionName = '';
 
 function normalizeRelationId(value) {
   if (Array.isArray(value)) {
@@ -15,36 +13,11 @@ function normalizeRelationId(value) {
 }
 
 function isNotFound(error) {
-  return error?.status === 404 || String(error?.message || '').toLowerCase().includes('missing or invalid collection context');
-}
-
-function collectionExistsWithRestrictedRules(error) {
-  return error?.status === 401 || error?.status === 403;
+  return error?.status === 404;
 }
 
 async function getWorkspaceCollection() {
-  if (cachedWorkspaceCollectionName) {
-    return pb.collection(cachedWorkspaceCollectionName);
-  }
-
-  for (const candidate of WORKSPACE_COLLECTION_CANDIDATES) {
-    try {
-      await pb.collection(candidate).getList(1, 1);
-      cachedWorkspaceCollectionName = candidate;
-      return pb.collection(candidate);
-    } catch (error) {
-      if (collectionExistsWithRestrictedRules(error)) {
-        cachedWorkspaceCollectionName = candidate;
-        return pb.collection(candidate);
-      }
-
-      if (!isNotFound(error)) {
-        throw error;
-      }
-    }
-  }
-
-  throw new Error('Workspace collection not found. Expected "workspaces" (or fallback "workspace").');
+  return pb.collection(PB_COLLECTIONS.WORKSPACES_COLLECTION);
 }
 
 async function findOwnedWorkspace(ownerId) {
@@ -96,10 +69,10 @@ export async function ensureWorkspaceForCurrentUser(user) {
     });
   }
 
-  await pb.collection('users').update(user.id, { workspace: workspace.id });
+  await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).update(user.id, { workspace: workspace.id });
 
   try {
-    await pb.collection('users').authRefresh();
+    await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
   } catch {
     // authRefresh can fail for stale states; workspace is still attached in DB.
   }
