@@ -146,3 +146,31 @@ export async function syncWorkspaceSubscription({ workspaceId, userEmail }) {
 
   return data || {};
 }
+
+export async function activateWorkspaceSubscription({ workspaceId }) {
+  let response;
+
+  try {
+    response = await fetch(`${normalizeApiBaseUrl(apiUrl)}/api/billing/activate-workspace`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ workspaceId }),
+    });
+  } catch (networkError) {
+    throw new Error(networkError?.message || 'Network error while activating workspace subscription.');
+  }
+
+  const { data, rawText } = await parseApiResponse(response);
+
+  if (!response.ok) {
+    const errorMessage =
+      data?.error ||
+      (rawText ? rawText.trim() : '') ||
+      `Workspace activation failed with status ${response.status}.`;
+    throw new Error(errorMessage);
+  }
+
+  return data || {};
+}

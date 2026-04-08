@@ -395,6 +395,31 @@ app.post('/api/billing/sync-workspace-subscription', async (req, res) => {
   }
 });
 
+app.post('/api/billing/activate-workspace', async (req, res) => {
+  const { workspaceId } = req.body || {};
+  const targetWorkspaceId = workspaceId || defaultWorkspaceId;
+
+  if (!targetWorkspaceId) {
+    jsonError(res, 400, 'workspaceId is required.');
+    return;
+  }
+
+  try {
+    const updated = await updateWorkspace(targetWorkspaceId, {
+      subscription_status: 'active',
+      device_limit: 1000000,
+    });
+
+    res.json({
+      workspaceId: updated.id,
+      subscription_status: updated.subscription_status || 'active',
+      updated: true,
+    });
+  } catch (error) {
+    jsonError(res, 500, error.message || 'Failed to activate workspace subscription.');
+  }
+});
+
 app.post('/api/users/attach-workspace', async (req, res) => {
   const { userId } = req.body || {};
 

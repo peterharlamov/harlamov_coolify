@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { createSubscriptionCheckoutSession, confirmBillingSession, getHostedPaymentLink, hasHostedPaymentLink } from '../lib/billing';
-import { getWorkspaceSummary } from '../lib/workspaces';
+import { activateWorkspaceSubscription, createSubscriptionCheckoutSession, confirmBillingSession, getHostedPaymentLink, hasHostedPaymentLink } from '../lib/billing';
+import { activateWorkspaceDirect, getWorkspaceSummary } from '../lib/workspaces';
 import { pb } from '../lib/pocketbase';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
 import { useAuth } from '../hooks/useAuth';
@@ -128,33 +128,22 @@ export function BillingPage() {
           });
         }
 
-        let lastSummary = null;
-
-        // Wait for webhook/confirmation propagation and refresh UI state.
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-          if (cancelled) {
-            return;
-          }
-
-          lastSummary = await getWorkspaceSummary(workspace.id);
-
-          if (lastSummary.status === 'active' || lastSummary.status === 'trialing') {
-            break;
-          }
-
-          await new Promise((resolve) => {
-            window.setTimeout(resolve, 1500);
+        try {
+          await activateWorkspaceSubscription({ workspaceId: workspace.id });
+        } catch (apiError) {
+          devLog('billing.activate.api.error', {
+            message: apiError?.message,
           });
+
+          await activateWorkspaceDirect(workspace.id);
         }
 
-        if (!cancelled) {
-          if (lastSummary) {
-            setSummary(lastSummary);
-          } else {
-            await loadSummary(workspace.id);
-          }
+        const nextSummary = await getWorkspaceSummary(workspace.id);
 
-          if (lastSummary?.status === 'active' || lastSummary?.status === 'trialing') {
+        if (!cancelled) {
+          setSummary(nextSummary);
+
+          if (nextSummary.status === 'active' || nextSummary.status === 'trialing') {
             window.localStorage.removeItem(pendingWorkspaceStorageKey);
           }
         }

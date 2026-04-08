@@ -228,3 +228,16 @@ export async function getWorkspaceSummary(workspaceId) {
     limit,
   };
 }
+
+export async function activateWorkspaceDirect(workspaceId) {
+  if (!workspaceId) {
+    throw new Error('workspaceId is required.');
+  }
+
+  const collection = await getWorkspaceCollection();
+
+  return collection.update(workspaceId, {
+    subscription_status: 'active',
+    device_limit: 1000000,
+  });
+}
