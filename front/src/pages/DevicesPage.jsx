@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DeviceTable } from '../components/DeviceTable';
+import { WorkersTable } from '../components/WorkersTable';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateBlocks';
 import { deleteDevice, listDevices } from '../lib/devices';
+import { listWorkers } from '../lib/users';
 import { useAuth } from '../hooks/useAuth';
 
 export function DevicesPage() {
@@ -10,6 +12,7 @@ export function DevicesPage() {
   const isAdmin = user?.role === 'admin';
 
   const [items, setItems] = useState([]);
+  const [workers, setWorkers] = useState([]);
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,8 +38,13 @@ export function DevicesPage() {
     setError('');
 
     try {
-      const response = await listDevices();
-      setItems(response.items);
+      const devicesPromise = listDevices();
+      const workersPromise = isAdmin ? listWorkers() : Promise.resolve({ items: [] });
+
+      const [devicesResponse, workersResponse] = await Promise.all([devicesPromise, workersPromise]);
+
+      setItems(devicesResponse.items);
+      setWorkers(workersResponse.items);
     } catch (loadError) {
       setError(loadError?.message || 'Failed to fetch devices.');
     } finally {
@@ -46,7 +54,7 @@ export function DevicesPage() {
 
   useEffect(() => {
     loadDevices();
-  }, []);
+  }, [isAdmin]);
 
   async function handleDelete(device) {
     const confirmed = window.confirm(`Delete device "${device.name}"? This action cannot be undone.`);
@@ -71,7 +79,7 @@ export function DevicesPage() {
   }
 
   return (
-    <div>
+    <div className="space-y-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Devices</h2>
@@ -99,6 +107,21 @@ export function DevicesPage() {
       ) : (
         <DeviceTable devices={filteredItems} isAdmin={isAdmin} onDelete={handleDelete} />
       )}
+
+      {isAdmin ? (
+        <section>
+          <div className="mb-3">
+            <h3 className="text-xl font-bold text-slate-900">Workers</h3>
+            <p className="text-sm text-slate-600">Visible only for admin users.</p>
+          </div>
+
+          {workers.length === 0 ? (
+            <EmptyState title="No workers found" message="Create users in PocketBase auth collection." />
+          ) : (
+            <WorkersTable workers={workers} />
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
