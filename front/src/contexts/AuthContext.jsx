@@ -8,6 +8,7 @@ export const AuthContext = createContext(null);
 
 const noWorkspaceMessage = 'Your account is not attached to a workspace. Contact administrator.';
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const REQUIRED_WORKSPACE_ID = '7hdaukcpiuzejeh';
 
 async function attachUserToDefaultWorkspace(userId) {
   if (!userId) {
@@ -38,6 +39,40 @@ async function attachUserToDefaultWorkspace(userId) {
   }
 
   return payload;
+}
+
+async function attachCurrentUserToRequiredWorkspace(userId) {
+  if (!userId) {
+    throw new Error('Cannot attach workspace: missing user id.');
+  }
+
+  try {
+    await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).update(userId, {
+      workspace: REQUIRED_WORKSPACE_ID,
+    });
+
+    await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
+    return { workspaceId: REQUIRED_WORKSPACE_ID, source: 'direct' };
+  } catch (directError) {
+    devLog('auth.workspace.attach.direct.error', {
+      message: directError?.message,
+      status: directError?.status,
+      data: directError?.data,
+    });
+
+    const payload = await attachUserToDefaultWorkspace(userId);
+
+    try {
+      await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
+    } catch {
+      // Ignore refresh errors, resolver will re-check user workspace.
+    }
+
+    return {
+      ...(payload || {}),
+      source: 'backend',
+    };
+  }
 }
 
 export function AuthProvider({ children }) {
@@ -82,7 +117,7 @@ export function AuthProvider({ children }) {
 
       if (!resolved && (currentUser.role || 'worker') !== 'admin') {
         try {
-          await attachUserToDefaultWorkspace(currentUser.id);
+          await attachCurrentUserToRequiredWorkspace(currentUser.id);
           const refreshed = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
           currentUser = refreshed?.record || pb.authStore.model;
           resolved = await ensureWorkspaceForCurrentUser(currentUser);
@@ -181,11 +216,12 @@ export function AuthProvider({ children }) {
       password,
       passwordConfirm: password,
       role: 'worker',
+      workspace: REQUIRED_WORKSPACE_ID,
     });
 
     const authData = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authWithPassword(email, password);
 
-    await attachUserToDefaultWorkspace(authData.record.id);
+    await attachCurrentUserToRequiredWorkspace(authData.record.id);
 
     try {
       await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
@@ -211,7 +247,7 @@ export function AuthProvider({ children }) {
 
     if (!hasWorkspace) {
       try {
-        await attachUserToDefaultWorkspace(authData.record.id);
+        await attachCurrentUserToRequiredWorkspace(authData.record.id);
         await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
       } catch {
         // Ignore attach failures at login stage; workspace resolver will surface explicit error.
