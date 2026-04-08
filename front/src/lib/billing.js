@@ -1,4 +1,5 @@
 const apiUrl = import.meta.env.VITE_API_URL;
+const hostedPaymentLink = import.meta.env.VITE_STRIPE_PAYMENT_LINK;
 
 if (!apiUrl) {
   throw new Error('Missing VITE_API_URL. Set it in your .env file.');
@@ -6,6 +7,28 @@ if (!apiUrl) {
 
 function normalizeApiBaseUrl(url) {
   return String(url).replace(/\/$/, '');
+}
+
+export function getHostedPaymentLink({ workspaceId, userEmail }) {
+  if (!hostedPaymentLink) {
+    return '';
+  }
+
+  const url = new URL(hostedPaymentLink);
+
+  if (userEmail) {
+    url.searchParams.set('prefilled_email', userEmail);
+  }
+
+  if (workspaceId) {
+    url.searchParams.set('client_reference_id', workspaceId);
+  }
+
+  return url.toString();
+}
+
+export function hasHostedPaymentLink() {
+  return Boolean(hostedPaymentLink);
 }
 
 async function parseApiResponse(response) {

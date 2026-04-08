@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createSubscriptionCheckoutSession } from '../lib/billing';
+import { createSubscriptionCheckoutSession, getHostedPaymentLink, hasHostedPaymentLink } from '../lib/billing';
 import { getWorkspaceSummary } from '../lib/workspaces';
 import { pb } from '../lib/pocketbase';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
@@ -61,10 +61,25 @@ export function BillingPage() {
     setError('');
 
     try {
-      const { url } = await createSubscriptionCheckoutSession({
-        workspaceId: summary.workspace.id,
-        userEmail: pb.authStore.record?.email,
-      });
+      let url = '';
+
+      if (hasHostedPaymentLink()) {
+        url = getHostedPaymentLink({
+          workspaceId: summary.workspace.id,
+          userEmail: pb.authStore.record?.email,
+        });
+      } else {
+        const payload = await createSubscriptionCheckoutSession({
+          workspaceId: summary.workspace.id,
+          userEmail: pb.authStore.record?.email,
+        });
+
+        url = payload.url;
+      }
+
+      if (!url) {
+        throw new Error('Checkout URL is not configured.');
+      }
 
       window.location.href = url;
     } catch (upgradeError) {

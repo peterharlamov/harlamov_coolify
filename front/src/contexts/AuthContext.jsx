@@ -7,6 +7,38 @@ import { PB_COLLECTIONS } from '../lib/pbCollections';
 export const AuthContext = createContext(null);
 
 const noWorkspaceMessage = 'Your account is not attached to a workspace. Contact administrator.';
+const apiUrl = import.meta.env.VITE_API_URL;
+
+async function attachUserToDefaultWorkspace(userId) {
+  if (!apiUrl || !userId) {
+    return null;
+  }
+
+  const response = await fetch(`${String(apiUrl).replace(/\/$/, '')}/api/users/attach-workspace`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId }),
+  });
+
+  const text = await response.text();
+  let payload = null;
+
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error || text || 'Failed to attach user to workspace.');
+  }
+
+  return payload;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(pb.authStore.model);
@@ -137,6 +169,15 @@ export function AuthProvider({ children }) {
     });
 
     const authData = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authWithPassword(email, password);
+
+    await attachUserToDefaultWorkspace(authData.record.id);
+
+    try {
+      await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
+    } catch {
+      // Ignore refresh errors here; workspace resolve flow will retry.
+    }
+
     return authData.record;
   }
 
@@ -148,6 +189,17 @@ export function AuthProvider({ children }) {
         await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).update(authData.record.id, { role: 'worker' });
       } catch {
         // Ignore update failures so OAuth login still succeeds.
+      }
+    }
+
+    const hasWorkspace = Boolean(authData.record.workspace || authData.record.expand?.workspace);
+
+    if (!hasWorkspace) {
+      try {
+        await attachUserToDefaultWorkspace(authData.record.id);
+        await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
+      } catch {
+        // Ignore attach failures at login stage; workspace resolver will surface explicit error.
       }
     }
 

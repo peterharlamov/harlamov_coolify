@@ -17,6 +17,8 @@ const pocketbaseUrl = process.env.POCKETBASE_URL;
 const pbAdminEmail = process.env.PB_ADMIN_EMAIL;
 const pbAdminPassword = process.env.PB_ADMIN_PASSWORD;
 const workspacesCollection = process.env.PB_WORKSPACES_COLLECTION || 'workspaces';
+const usersCollection = process.env.PB_USERS_COLLECTION || 'users';
+const defaultWorkspaceName = process.env.DEFAULT_WORKSPACE_NAME || 'Office Device Inventory';
 
 if (!stripeSecretKey || !stripeWebhookSecret || !stripePriceId || !clientUrl || !pocketbaseUrl || !pbAdminEmail || !pbAdminPassword) {
   throw new Error('Missing required backend environment variables.');
@@ -52,6 +54,100 @@ async function updateWorkspace(workspaceId, payload) {
   return pb.collection(workspacesCollection).update(workspaceId, payload);
 }
 
+async function findUserByEmail(email) {
+  if (!email) {
+    return null;
+  }
+
+  await ensureAdminAuth();
+
+  try {
+    return await pb.collection(usersCollection).getFirstListItem(`email = "${email}"`);
+  } catch (error) {
+    if (error?.status === 404) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function getDefaultWorkspace() {
+  await ensureAdminAuth();
+
+  try {
+    return await pb.collection(workspacesCollection).getFirstListItem('id != ""', {
+      sort: 'created',
+    });
+  } catch (error) {
+    if (error?.status !== 404) {
+      throw error;
+    }
+  }
+
+  return pb.collection(workspacesCollection).create({
+    name: defaultWorkspaceName,
+    subscription_status: 'inactive',
+    device_limit: 10,
+  });
+}
+
+async function attachUserToWorkspace(userId, workspaceId) {
+  await ensureAdminAuth();
+  return pb.collection(usersCollection).update(userId, { workspace: workspaceId });
+}
+
+async function resolveWorkspaceIdFromCheckoutSession(session) {
+  const fromMetadata = session?.metadata?.workspaceId;
+  if (fromMetadata) {
+    return fromMetadata;
+  }
+
+  const fromClientRef = session?.client_reference_id;
+  if (fromClientRef) {
+    return fromClientRef;
+  }
+
+  const customerEmail = session?.customer_details?.email || session?.customer_email || '';
+  const user = await findUserByEmail(customerEmail);
+
+  if (!user) {
+    return '';
+  }
+
+  if (Array.isArray(user.workspace)) {
+    return user.workspace[0] || '';
+  }
+
+  return typeof user.workspace === 'string' ? user.workspace : '';
+}
+
+async function resolveWorkspaceIdFromSubscription(subscription) {
+  const fromMetadata = subscription?.metadata?.workspaceId;
+  if (fromMetadata) {
+    return fromMetadata;
+  }
+
+  const customerId = subscription?.customer || '';
+
+  if (!customerId) {
+    return '';
+  }
+
+  await ensureAdminAuth();
+
+  try {
+    const workspace = await pb.collection(workspacesCollection).getFirstListItem(`stripe_customer_id = "${customerId}"`);
+    return workspace.id;
+  } catch (error) {
+    if (error?.status === 404) {
+      return '';
+    }
+
+    throw error;
+  }
+}
+
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   let event;
 
@@ -66,7 +162,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const workspaceId = session.metadata?.workspaceId;
+      const workspaceId = await resolveWorkspaceIdFromCheckoutSession(session);
 
       if (workspaceId && session.subscription) {
         await updateWorkspace(workspaceId, {
@@ -81,7 +177,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
     if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object;
-      const workspaceId = subscription.metadata?.workspaceId;
+      const workspaceId = await resolveWorkspaceIdFromSubscription(subscription);
 
       if (workspaceId) {
         const status = subscription.status;
@@ -158,6 +254,28 @@ app.post('/api/create-subscription-checkout-session', async (req, res) => {
     res.json({ url: session.url });
   } catch (error) {
     jsonError(res, 500, error.message || 'Failed to create subscription checkout session.');
+  }
+});
+
+app.post('/api/users/attach-workspace', async (req, res) => {
+  const { userId } = req.body || {};
+
+  if (!userId) {
+    jsonError(res, 400, 'userId is required.');
+    return;
+  }
+
+  try {
+    const workspace = await getDefaultWorkspace();
+    await attachUserToWorkspace(userId, workspace.id);
+
+    res.json({
+      userId,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+    });
+  } catch (error) {
+    jsonError(res, 500, error.message || 'Failed to attach user to workspace.');
   }
 });
 
