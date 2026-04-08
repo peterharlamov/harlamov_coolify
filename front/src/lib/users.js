@@ -1,4 +1,5 @@
 import { pb } from './pocketbase';
+import { devTable } from '../utils/devLogger';
 
 const collection = pb.collection('users');
 
@@ -7,10 +8,13 @@ function normalizeString(value) {
 }
 
 export function normalizeUserRecord(record) {
+  const email = normalizeString(record?.email);
+
   return {
     ...record,
     name: normalizeString(record?.name),
-    email: normalizeString(record?.email),
+    email,
+    emailDisplay: email || 'Missing in database',
     role: normalizeString(record?.role) || 'worker',
     verified: Boolean(record?.verified),
     created: normalizeString(record?.created) || normalizeString(record?.updated),
@@ -27,6 +31,19 @@ export async function listUsers({ page = 1, perPage = 200 } = {}) {
     sort: '-created',
     filter,
   });
+
+  devTable(
+    'users.list raw snapshot',
+    (response.items || []).map((record) => ({
+      id: record.id,
+      name: record.name,
+      email: record.email,
+      emailVisibility: record.emailVisibility,
+      role: record.role,
+      verified: record.verified,
+      created: record.created,
+    }))
+  );
 
   return {
     ...response,

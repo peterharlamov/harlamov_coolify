@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { pb } from '../lib/pocketbase';
 import { ensureWorkspaceForCurrentUser, getWorkspaceById } from '../lib/workspaces';
+import { devLog } from '../utils/devLogger';
 
 export const AuthContext = createContext(null);
 
@@ -17,6 +18,7 @@ export function AuthProvider({ children }) {
 
   const resolveWorkspace = useCallback(async () => {
     const currentUser = pb.authStore.model;
+    devLog('auth.currentUser', currentUser);
 
     if (!currentUser || !pb.authStore.isValid) {
       setWorkspace(null);
@@ -34,10 +36,12 @@ export function AuthProvider({ children }) {
       if (!resolved && (currentUser.role || 'worker') !== 'admin') {
         setWorkspace(null);
         setWorkspaceError(noWorkspaceMessage);
+        devLog('auth.workspace.missingForWorker', { userId: currentUser.id, role: currentUser.role });
       } else if (resolved) {
         const workspaceRecord = await getWorkspaceById(resolved.id);
         setWorkspace(workspaceRecord);
         setWorkspaceError('');
+        devLog('auth.workspace.resolved', workspaceRecord);
       } else {
         setWorkspace(null);
       }
@@ -47,6 +51,11 @@ export function AuthProvider({ children }) {
     } catch (error) {
       setWorkspace(null);
       setWorkspaceError(error?.message || 'Failed to resolve workspace.');
+      devLog('auth.workspace.error', {
+        message: error?.message,
+        status: error?.status,
+        data: error?.data,
+      });
     } finally {
       setIsWorkspaceReady(true);
     }

@@ -4,6 +4,7 @@ import { getWorkspaceSummary } from '../lib/workspaces';
 import { pb } from '../lib/pocketbase';
 import { ErrorState, LoadingState, NoWorkspaceState } from '../components/StateBlocks';
 import { useAuth } from '../hooks/useAuth';
+import { devLog } from '../utils/devLogger';
 
 export function BillingPage() {
   const { user, workspace, workspaceError, isWorkspaceReady, refreshWorkspace } = useAuth();
@@ -17,12 +18,19 @@ export function BillingPage() {
   async function loadSummary(workspaceId) {
     setIsLoading(true);
     setError('');
+    devLog('billing.load.start', { workspaceId, user: pb.authStore.model });
 
     try {
       const nextSummary = await getWorkspaceSummary(workspaceId);
       setSummary(nextSummary);
+      devLog('billing.load.summary', nextSummary);
     } catch (loadError) {
       setError(loadError?.message || 'Failed to load billing data.');
+      devLog('billing.load.error', {
+        message: loadError?.message,
+        status: loadError?.status,
+        data: loadError?.data,
+      });
     } finally {
       setIsLoading(false);
     }

@@ -2,8 +2,16 @@ import { pb } from './pocketbase';
 
 const collection = pb.collection('devices');
 
+function workspaceFilterExpression(workspaceId) {
+  if (!workspaceId) {
+    return '';
+  }
+
+  return `(workspace = "${workspaceId}" || workspace ?= "${workspaceId}")`;
+}
+
 export function listDevices({ workspaceId = '', filter = '', sort = '-created', page = 1, perPage = 100 } = {}) {
-  const workspaceFilter = workspaceId ? `workspace = "${workspaceId}"` : '';
+  const workspaceFilter = workspaceFilterExpression(workspaceId);
   const fullFilter = [workspaceFilter, filter].filter(Boolean).join(' && ');
 
   return collection.getList(page, perPage, {
@@ -51,7 +59,7 @@ export function deleteDevice(id) {
 }
 
 export function countDevicesByStatus(status, workspaceId = '') {
-  const workspaceFilter = workspaceId ? `workspace = "${workspaceId}"` : '';
+  const workspaceFilter = workspaceFilterExpression(workspaceId);
   const statusFilter = `status = "${status}"`;
 
   return collection.getList(1, 1, {

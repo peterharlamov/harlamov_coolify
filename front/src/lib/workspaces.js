@@ -1,14 +1,55 @@
 import { pb } from './pocketbase';
 import { listDevices } from './devices';
 
-const collection = pb.collection('workspaces');
 const DEFAULT_WORKSPACE_NAME = 'Office Device Inventory';
+const WORKSPACE_COLLECTION_CANDIDATES = ['workspaces', 'workspace'];
+
+let cachedWorkspaceCollectionName = '';
+
+function normalizeRelationId(value) {
+  if (Array.isArray(value)) {
+    return value[0] || '';
+  }
+
+  return typeof value === 'string' ? value : '';
+}
 
 function isNotFound(error) {
-  return error?.status === 404;
+  return error?.status === 404 || String(error?.message || '').toLowerCase().includes('missing or invalid collection context');
+}
+
+function collectionExistsWithRestrictedRules(error) {
+  return error?.status === 401 || error?.status === 403;
+}
+
+async function getWorkspaceCollection() {
+  if (cachedWorkspaceCollectionName) {
+    return pb.collection(cachedWorkspaceCollectionName);
+  }
+
+  for (const candidate of WORKSPACE_COLLECTION_CANDIDATES) {
+    try {
+      await pb.collection(candidate).getList(1, 1);
+      cachedWorkspaceCollectionName = candidate;
+      return pb.collection(candidate);
+    } catch (error) {
+      if (collectionExistsWithRestrictedRules(error)) {
+        cachedWorkspaceCollectionName = candidate;
+        return pb.collection(candidate);
+      }
+
+      if (!isNotFound(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error('Workspace collection not found. Expected "workspaces" (or fallback "workspace").');
 }
 
 async function findOwnedWorkspace(ownerId) {
+  const collection = await getWorkspaceCollection();
+
   try {
     return await collection.getFirstListItem(`owner = "${ownerId}"`);
   } catch (error) {
@@ -26,7 +67,7 @@ export async function ensureWorkspaceForCurrentUser(user) {
   }
 
   const role = user.role || 'worker';
-  const workspaceId = user.workspace || '';
+  const workspaceId = normalizeRelationId(user.workspace);
 
   if (workspaceId) {
     try {
@@ -45,6 +86,8 @@ export async function ensureWorkspaceForCurrentUser(user) {
   let workspace = await findOwnedWorkspace(user.id);
 
   if (!workspace) {
+    const collection = await getWorkspaceCollection();
+
     workspace = await collection.create({
       name: DEFAULT_WORKSPACE_NAME,
       owner: user.id,
@@ -65,10 +108,11 @@ export async function ensureWorkspaceForCurrentUser(user) {
 }
 
 export function getCurrentWorkspaceId() {
-  return pb.authStore.record?.workspace || '';
+  return normalizeRelationId(pb.authStore.record?.workspace);
 }
 
-export function getWorkspaceById(id) {
+export async function getWorkspaceById(id) {
+  const collection = await getWorkspaceCollection();
   return collection.getOne(id);
 }
 
