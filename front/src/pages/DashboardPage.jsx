@@ -1,0 +1,85 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { countDevicesByStatus, listDevices } from '../lib/devices';
+import { DEVICE_STATUSES, STATUS_LABELS } from '../utils/inventory';
+import { ErrorState, LoadingState } from '../components/StateBlocks';
+
+export function DashboardPage() {
+  const [stats, setStats] = useState({ total: 0, statuses: {} });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  async function loadStats() {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const all = await listDevices({ page: 1, perPage: 1 });
+      const statusResults = await Promise.all(DEVICE_STATUSES.map((status) => countDevicesByStatus(status)));
+
+      const statuses = DEVICE_STATUSES.reduce((accumulator, status, index) => {
+        accumulator[status] = statusResults[index].totalItems;
+        return accumulator;
+      }, {});
+
+      setStats({
+        total: all.totalItems,
+        statuses,
+      });
+    } catch (loadError) {
+      setError(loadError?.message || 'Failed to load dashboard.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const cards = useMemo(
+    () => [
+      { label: 'Total devices', value: stats.total, accent: 'from-sky-500 to-cyan-500' },
+      ...DEVICE_STATUSES.map((status) => ({
+        label: STATUS_LABELS[status],
+        value: stats.statuses[status] ?? 0,
+        accent: 'from-emerald-500 to-teal-500',
+      })),
+    ],
+    [stats]
+  );
+
+  if (isLoading) {
+    return <LoadingState message="Loading dashboard..." />;
+  }
+
+  if (error) {
+    return <ErrorState message={error} onRetry={loadStats} />;
+  }
+
+  return (
+    <div>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
+          <p className="text-slate-600">High-level overview of office equipment.</p>
+        </div>
+        <Link to="/devices" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+          Open devices
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {cards.map((card) => (
+          <div key={card.label} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-soft">
+            <div className={`h-2 bg-gradient-to-r ${card.accent}`} />
+            <div className="p-5">
+              <p className="text-sm text-slate-500">{card.label}</p>
+              <p className="mt-1 text-3xl font-bold text-slate-900">{card.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

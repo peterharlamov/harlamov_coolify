@@ -55,7 +55,17 @@ export function Layout() {
         </aside>
 
         <main className="flex min-h-[80vh] flex-col rounded-3xl bg-white p-4 shadow-soft lg:p-6">
-          <Outlet />
+          <header className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Workspace</p>
+              <p className="text-sm font-semibold text-slate-900">Office Device Inventory</p>
+            </div>
+            <p className="text-sm text-slate-600">{new Date().toLocaleDateString()}</p>
+          </header>
+
+          <div className="animate-fade-up">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

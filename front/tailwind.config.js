@@ -15,6 +15,15 @@ export default {
       boxShadow: {
         soft: '0 10px 35px rgba(15, 23, 42, 0.08)',
       },
+      keyframes: {
+        fadeUp: {
+          '0%': { opacity: '0', transform: 'translateY(14px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        'fade-up': 'fadeUp 0.45s ease-out both',
+      },
     },
   },
   plugins: [],
