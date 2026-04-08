@@ -7,6 +7,7 @@ import { DevicesPage } from '../pages/DevicesPage';
 import { LoginPage } from '../pages/LoginPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { RegisterPage } from '../pages/RegisterPage';
+import { UsersPage } from '../pages/UsersPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
 import { RoleRoute } from '../routes/RoleRoute';
 
@@ -26,6 +27,7 @@ export function AppRouter() {
           <Route element={<RoleRoute allowedRoles={['admin']} />}>
             <Route path="/devices/new" element={<DeviceFormPage />} />
             <Route path="/devices/:id/edit" element={<DeviceFormPage />} />
+            <Route path="/users" element={<UsersPage />} />
           </Route>
         </Route>
       </Route>

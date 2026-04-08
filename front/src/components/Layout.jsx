@@ -1,14 +1,16 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-
-const navItems = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/devices', label: 'Devices' },
-];
+import { pb } from '../lib/pocketbase';
 
 export function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const currentRole = pb.authStore.record?.role;
+  const navItems = [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/devices', label: 'Devices' },
+    ...(currentRole === 'admin' ? [{ to: '/users', label: 'Users' }] : []),
+  ];
 
   function handleLogout() {
     logout();
@@ -42,7 +44,7 @@ export function Layout() {
 
           <div className="mt-8 rounded-xl bg-slate-50 p-3 text-sm">
             <p className="font-semibold text-slate-900">{user?.name || user?.email}</p>
-            <p className="text-slate-500">Role: {user?.role}</p>
+            <p className="text-slate-500">Role: {currentRole || user?.role}</p>
           </div>
 
           <button
