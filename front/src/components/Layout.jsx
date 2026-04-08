@@ -9,7 +9,7 @@ export function Layout() {
   const navItems = [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/devices', label: 'Devices' },
-    ...(currentRole === 'admin' ? [{ to: '/users', label: 'Users' }] : []),
+    ...(currentRole === 'admin' ? [{ to: '/users', label: 'Users' }, { to: '/billing', label: 'Billing' }] : []),
   ];
 
   function handleLogout() {

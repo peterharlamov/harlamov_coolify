@@ -1,30 +1,38 @@
 # Inventuurisusteem / Inventory System
 
-Modern office inventory system frontend built with React + Vite + Tailwind and PocketBase SDK.
+Office Device Inventory with workspace-level subscriptions.
 
-## Tech Stack
+## Stack
 
-- Frontend: React (JavaScript), Vite, Tailwind CSS, React Router
-- Backend/Auth/Database: PocketBase (direct SDK usage from frontend)
-- Deployment target: Coolify
+- Frontend: React + Vite + Tailwind + React Router
+- Main data/auth: PocketBase SDK directly from frontend
+- Billing backend: Node.js + Express + Stripe (checkout + webhook)
 
-## Features
+## What is implemented
 
-- Email/password registration and login
-- OAuth login through PocketBase auth providers
-- Persistent login session (if token remains valid)
-- Role-based UI and route access:
-  - Admin: full devices CRUD, assignment to users
-  - Worker: view devices and add notes
-- Dashboard with device status counters
-- Devices table with search and status badges
-- Device details page with notes timeline
-- Loading, error, and empty states
-- Responsive sidebar + content layout
+- Auth with PocketBase (email/password + OAuth)
+- Role model: admin, worker
+- Admin-only Users page and Billing page
+- Workspace-based device tracking
+- Subscription-based limits:
+  - Free workspace: max 10 devices
+  - Active/trialing subscription: unlimited devices
+- Frontend limit warnings and blocked create action
+- Server-side device limit enforcement using PocketBase hook
+- Stripe subscription checkout and webhook provisioning
 
-## Project Structure
+## Updated project structure
 
 ```text
+backend/
+  .env.example
+  package.json
+  src/
+    server.js
+pocketbase/
+  SCHEMA_CHANGES.md
+  pb_hooks/
+    devices-limit.pb.js
 src/
   app/
   components/
@@ -36,99 +44,101 @@ src/
   utils/
 ```
 
-## Environment Variables
+## Environment variables
 
-Create .env in project root:
+### Frontend (.env)
 
 ```bash
 VITE_POCKETBASE_URL=http://127.0.0.1:8090
+VITE_API_URL=http://localhost:4000
+VITE_STRIPE_PUBLISHABLE_KEY=
 ```
 
-See .env.example for template.
+### Backend (backend/.env)
 
-## PocketBase Collections
+```bash
+PORT=4000
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_ID=
+CLIENT_URL=http://localhost:5173
+POCKETBASE_URL=http://127.0.0.1:8090
+PB_ADMIN_EMAIL=
+PB_ADMIN_PASSWORD=
+```
 
-### 1) users (auth collection)
+## PocketBase schema and rules
 
-Fields:
-- name (text)
-- role (select: admin, worker)
+Apply all required changes from:
 
-Behavior implemented in app:
-- Standard registration creates role = worker
-- OAuth login tries to set worker role for newly created users if role is missing
-- Admin users should be created manually in PocketBase
+- pocketbase/SCHEMA_CHANGES.md
 
-### 2) devices (base collection)
+Critical users rules for visibility fix:
 
-Fields:
-- name
-- type
-- inventory_number
-- serial_number
-- status
-- assigned_to (relation -> users)
-- description
+- listRule: @request.auth.role = "admin" || id = @request.auth.id
+- viewRule: @request.auth.role = "admin" || id = @request.auth.id
+- updateRule: @request.auth.role = "admin" || id = @request.auth.id
+- options.manageRule: @request.auth.role = "admin"
 
-### 3) device_notes (base collection)
+This is what allows admin to list all users, while worker can only see self.
 
-Fields:
-- device (relation -> devices)
-- author (relation -> users)
-- text
+## Stripe subscription flow
 
-## Recommended PocketBase Rules
+1. Admin opens Billing page and clicks Upgrade to Unlimited.
+2. Frontend calls backend endpoint:
+   - POST /api/create-subscription-checkout-session
+3. Backend creates Stripe Checkout session in subscription mode.
+4. Stripe redirects user back to frontend Billing page.
+5. Stripe webhook calls backend:
+   - POST /api/stripe/webhook
+6. Backend updates workspace in PocketBase:
+   - active/trialing -> unlimited limit (large value)
+   - canceled/past_due/inactive -> limit reset to 10 for future creation
 
-### devices
+## Server-side limit enforcement
 
-- listRule: @request.auth.id != ""
-- viewRule: @request.auth.id != ""
-- createRule: @request.auth.role = "admin"
-- updateRule: @request.auth.role = "admin"
-- deleteRule: @request.auth.role = "admin"
+- Hook file: pocketbase/pb_hooks/devices-limit.pb.js
+- It blocks creating devices when free workspace has reached limit.
+- Existing devices are preserved; only new creation is blocked.
 
-### device_notes
+## Local development
 
-- listRule: @request.auth.id != ""
-- viewRule: @request.auth.id != ""
-- createRule: @request.auth.id != ""
-- updateRule: author = @request.auth.id
-- deleteRule: author = @request.auth.id || @request.auth.role = "admin"
-
-## Run Locally
-
-1. Install dependencies:
+1. Install frontend dependencies:
 
 ```bash
 npm install
 ```
 
-2. Start development server:
+2. Install backend dependencies:
+
+```bash
+npm --prefix backend install
+```
+
+3. Run backend:
+
+```bash
+npm run backend:dev
+```
+
+4. Run frontend:
 
 ```bash
 npm run dev
 ```
 
-3. Open app URL from Vite output (usually http://localhost:5173).
+## Stripe webhook local testing
 
-## Build
+Use Stripe CLI and forward webhook events to backend:
 
 ```bash
-npm run build
-npm run preview
+stripe listen --forward-to localhost:4000/api/stripe/webhook
 ```
 
-## Deploying on Coolify
+Copy webhook signing secret to backend .env as STRIPE_WEBHOOK_SECRET.
 
-Use a static frontend deployment (Node build):
+## Coolify notes
 
-- Install command: npm install
-- Build command: npm run build
-- Start command: npm run preview -- --host 0.0.0.0 --port $PORT
-- Expose port: $PORT (or fixed preview port configured in Coolify)
-- Environment variable required: VITE_POCKETBASE_URL
-
-## Notes
-
-- There is no Express proxy layer: all API/auth calls are done with PocketBase JS SDK.
-- Ensure OAuth providers are configured in PocketBase Auth settings to see OAuth buttons on login page.
+- Frontend and backend should be deployed as separate services.
+- Frontend needs VITE_API_URL pointing to backend public URL.
+- Backend must have Stripe secret env variables and PocketBase admin credentials.

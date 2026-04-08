@@ -5,6 +5,7 @@ import { WorkersTable } from '../components/WorkersTable';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateBlocks';
 import { deleteDevice, listDevices } from '../lib/devices';
 import { listWorkers } from '../lib/users';
+import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
 import { useAuth } from '../hooks/useAuth';
 
 export function DevicesPage() {
@@ -13,6 +14,7 @@ export function DevicesPage() {
 
   const [items, setItems] = useState([]);
   const [workers, setWorkers] = useState([]);
+  const [workspaceSummary, setWorkspaceSummary] = useState(null);
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -38,13 +40,17 @@ export function DevicesPage() {
     setError('');
 
     try {
-      const devicesPromise = listDevices();
-      const workersPromise = isAdmin ? listWorkers() : Promise.resolve({ items: [] });
+      const workspaceId = getCurrentWorkspaceId();
 
-      const [devicesResponse, workersResponse] = await Promise.all([devicesPromise, workersPromise]);
+      const devicesPromise = listDevices({ workspaceId });
+      const workersPromise = isAdmin ? listWorkers() : Promise.resolve({ items: [] });
+      const workspacePromise = getWorkspaceSummary(workspaceId);
+
+      const [devicesResponse, workersResponse, workspaceData] = await Promise.all([devicesPromise, workersPromise, workspacePromise]);
 
       setItems(devicesResponse.items);
       setWorkers(workersResponse.items);
+      setWorkspaceSummary(workspaceData);
     } catch (loadError) {
       setError(loadError?.message || 'Failed to fetch devices.');
     } finally {
@@ -78,6 +84,8 @@ export function DevicesPage() {
     return <ErrorState message={error} onRetry={loadDevices} />;
   }
 
+  const limitReached = Boolean(workspaceSummary && !workspaceSummary.isUnlimited && workspaceSummary.usedDevices >= workspaceSummary.limit);
+
   return (
     <div className="space-y-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -95,12 +103,27 @@ export function DevicesPage() {
             className="w-72 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
           />
           {isAdmin ? (
-            <Link to="/devices/new" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-              Add device
-            </Link>
+            limitReached ? (
+              <Link to="/billing" className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">
+                Upgrade to add device
+              </Link>
+            ) : (
+              <Link to="/devices/new" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+                Add device
+              </Link>
+            )
           ) : null}
         </div>
       </div>
+
+      {limitReached ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p>Free plan allows up to 10 devices. Upgrade to Unlimited to add more.</p>
+          <Link to="/billing" className="mt-2 inline-block font-semibold text-amber-900 underline">
+            Open billing
+          </Link>
+        </div>
+      ) : null}
 
       {filteredItems.length === 0 ? (
         <EmptyState title="No devices found" message="Try adjusting search filters or add a new device." />

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { countDevicesByStatus, listDevices } from '../lib/devices';
+import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
 import { DEVICE_STATUSES, STATUS_LABELS } from '../utils/inventory';
 import { ErrorState, LoadingState } from '../components/StateBlocks';
 
 export function DashboardPage() {
   const [stats, setStats] = useState({ total: 0, statuses: {} });
+  const [workspaceSummary, setWorkspaceSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -14,8 +16,10 @@ export function DashboardPage() {
     setError('');
 
     try {
-      const all = await listDevices({ page: 1, perPage: 1 });
-      const statusResults = await Promise.all(DEVICE_STATUSES.map((status) => countDevicesByStatus(status)));
+      const workspaceId = getCurrentWorkspaceId();
+      const all = await listDevices({ workspaceId, page: 1, perPage: 1 });
+      const statusResults = await Promise.all(DEVICE_STATUSES.map((status) => countDevicesByStatus(status, workspaceId)));
+      const workspaceData = await getWorkspaceSummary(workspaceId);
 
       const statuses = DEVICE_STATUSES.reduce((accumulator, status, index) => {
         accumulator[status] = statusResults[index].totalItems;
@@ -26,6 +30,7 @@ export function DashboardPage() {
         total: all.totalItems,
         statuses,
       });
+      setWorkspaceSummary(workspaceData);
     } catch (loadError) {
       setError(loadError?.message || 'Failed to load dashboard.');
     } finally {
@@ -40,13 +45,27 @@ export function DashboardPage() {
   const cards = useMemo(
     () => [
       { label: 'Total devices', value: stats.total, accent: 'from-sky-500 to-cyan-500' },
+      {
+        label: 'Workspace plan',
+        value: workspaceSummary?.isUnlimited ? 'Unlimited' : 'Free',
+        accent: 'from-brand-500 to-cyan-500',
+      },
+      {
+        label: 'Usage',
+        value: workspaceSummary
+          ? workspaceSummary.isUnlimited
+            ? `${workspaceSummary.usedDevices} / Unlimited`
+            : `${workspaceSummary.usedDevices} / ${workspaceSummary.limit}`
+          : '-',
+        accent: 'from-violet-500 to-fuchsia-500',
+      },
       ...DEVICE_STATUSES.map((status) => ({
         label: STATUS_LABELS[status],
         value: stats.statuses[status] ?? 0,
         accent: 'from-emerald-500 to-teal-500',
       })),
     ],
-    [stats]
+    [stats, workspaceSummary]
   );
 
   if (isLoading) {

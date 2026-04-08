@@ -1,0 +1,16 @@
+{
+  "name": "inventory-stripe-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "pocketbase": "^0.26.3",
+    "stripe": "^16.12.0"
+  }
+}

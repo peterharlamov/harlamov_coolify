@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { createDevice, getDeviceById, updateDevice } from '../lib/devices';
 import { pb } from '../lib/pocketbase';
+import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
 import { DEVICE_STATUSES, DEVICE_TYPES, STATUS_LABELS, TYPE_LABELS } from '../utils/inventory';
 import { ErrorState, LoadingState } from '../components/StateBlocks';
 
@@ -26,6 +27,7 @@ export function DeviceFormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
+  const [workspaceSummary, setWorkspaceSummary] = useState(null);
 
   const pageTitle = useMemo(() => (isEdit ? 'Edit device' : 'Add device'), [isEdit]);
 
@@ -36,9 +38,11 @@ export function DeviceFormPage() {
     try {
       const usersPromise = pb.collection('users').getList(1, 200, { sort: 'name' });
       const devicePromise = isEdit ? getDeviceById(id) : Promise.resolve(null);
+      const workspacePromise = getWorkspaceSummary(getCurrentWorkspaceId());
 
-      const [usersResponse, device] = await Promise.all([usersPromise, devicePromise]);
+      const [usersResponse, device, workspaceData] = await Promise.all([usersPromise, devicePromise, workspacePromise]);
       setUsers(usersResponse.items);
+      setWorkspaceSummary(workspaceData);
 
       if (device) {
         setForm({
@@ -81,6 +85,15 @@ export function DeviceFormPage() {
       if (isEdit) {
         await updateDevice(id, payload);
       } else {
+        const workspaceId = getCurrentWorkspaceId();
+        const summary = await getWorkspaceSummary(workspaceId);
+        const limitReached = !summary.isUnlimited && summary.usedDevices >= summary.limit;
+
+        if (limitReached) {
+          throw new Error('Free plan allows up to 10 devices. Upgrade to Unlimited to add more.');
+        }
+
+        payload.workspace = workspaceId;
         await createDevice(payload);
       }
 
@@ -100,6 +113,8 @@ export function DeviceFormPage() {
     return <ErrorState message={loadError} onRetry={loadData} />;
   }
 
+  const createLimitReached = Boolean(!isEdit && workspaceSummary && !workspaceSummary.isUnlimited && workspaceSummary.usedDevices >= workspaceSummary.limit);
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -111,6 +126,15 @@ export function DeviceFormPage() {
           Back to list
         </Link>
       </div>
+
+      {createLimitReached ? (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p>Free plan allows up to 10 devices. Upgrade to Unlimited to add more.</p>
+          <Link to="/billing" className="mt-2 inline-block font-semibold text-amber-900 underline">
+            Open billing
+          </Link>
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-slate-200 p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -182,7 +206,7 @@ export function DeviceFormPage() {
 
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || createLimitReached}
           className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save changes' : 'Create device'}

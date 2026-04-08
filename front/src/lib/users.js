@@ -3,8 +3,14 @@ import { pb } from './pocketbase';
 const collection = pb.collection('users');
 
 export function listUsers({ page = 1, perPage = 200 } = {}) {
+  const role = pb.authStore.record?.role;
+  const ownId = pb.authStore.record?.id;
+
+  const filter = role === 'admin' ? '' : ownId ? `id = "${ownId}"` : '';
+
   return collection.getList(page, perPage, {
     sort: '-created',
+    filter,
   });
 }
 

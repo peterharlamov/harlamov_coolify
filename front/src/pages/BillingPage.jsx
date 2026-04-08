@@ -1,0 +1,114 @@
+import { useEffect, useState } from 'react';
+import { createSubscriptionCheckoutSession } from '../lib/billing';
+import { getCurrentWorkspaceId, getWorkspaceSummary } from '../lib/workspaces';
+import { pb } from '../lib/pocketbase';
+import { ErrorState, LoadingState } from '../components/StateBlocks';
+
+export function BillingPage() {
+  const [summary, setSummary] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function loadSummary() {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const workspaceId = getCurrentWorkspaceId();
+      const nextSummary = await getWorkspaceSummary(workspaceId);
+      setSummary(nextSummary);
+    } catch (loadError) {
+      setError(loadError?.message || 'Failed to load billing data.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadSummary();
+  }, []);
+
+  async function handleUpgrade() {
+    if (!summary?.workspace?.id) {
+      return;
+    }
+
+    setIsRedirecting(true);
+    setError('');
+
+    try {
+      const { url } = await createSubscriptionCheckoutSession({
+        workspaceId: summary.workspace.id,
+        userEmail: pb.authStore.record?.email,
+      });
+
+      window.location.href = url;
+    } catch (upgradeError) {
+      setError(upgradeError?.message || 'Failed to start Stripe Checkout.');
+      setIsRedirecting(false);
+    }
+  }
+
+  if (isLoading) {
+    return <LoadingState message="Loading billing..." />;
+  }
+
+  if (error && !summary) {
+    return <ErrorState message={error} onRetry={loadSummary} />;
+  }
+
+  const planName = summary.isUnlimited ? 'Unlimited' : 'Free';
+  const usageText = summary.isUnlimited ? `${summary.usedDevices} / Unlimited` : `${summary.usedDevices} / ${summary.limit}`;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-900">Billing</h2>
+        <p className="text-sm text-slate-600">Workspace-level subscription and device usage limits.</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card label="Workspace" value={summary.workspace.name || '-'} accent="from-sky-500 to-cyan-500" />
+        <Card label="Plan" value={planName} accent="from-brand-500 to-cyan-500" />
+        <Card label="Subscription status" value={summary.status} accent="from-violet-500 to-fuchsia-500" />
+        <Card label="Device usage" value={usageText} accent="from-emerald-500 to-teal-500" />
+      </div>
+
+      {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+        {!summary.isUnlimited ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-700">Free plan allows up to 10 devices. Upgrade to Unlimited to remove the cap.</p>
+            <button
+              type="button"
+              onClick={handleUpgrade}
+              disabled={isRedirecting}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isRedirecting ? 'Redirecting to Stripe...' : 'Upgrade to Unlimited'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-emerald-700">Subscription active</p>
+            <p className="text-sm text-slate-600">Your workspace can create unlimited devices.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Card({ label, value, accent }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-soft">
+      <div className={`h-2 bg-gradient-to-r ${accent}`} />
+      <div className="p-5">
+        <p className="text-sm text-slate-500">{label}</p>
+        <p className="mt-1 text-xl font-bold text-slate-900">{value}</p>
+      </div>
+    </div>
+  );
+}

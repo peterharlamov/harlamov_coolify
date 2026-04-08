@@ -4,6 +4,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { DeviceDetailsPage } from '../pages/DeviceDetailsPage';
 import { DeviceFormPage } from '../pages/DeviceFormPage';
 import { DevicesPage } from '../pages/DevicesPage';
+import { BillingPage } from '../pages/BillingPage';
 import { LoginPage } from '../pages/LoginPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { RegisterPage } from '../pages/RegisterPage';
@@ -28,6 +29,7 @@ export function AppRouter() {
             <Route path="/devices/new" element={<DeviceFormPage />} />
             <Route path="/devices/:id/edit" element={<DeviceFormPage />} />
             <Route path="/users" element={<UsersPage />} />
+            <Route path="/billing" element={<BillingPage />} />
           </Route>
         </Route>
       </Route>
