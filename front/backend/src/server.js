@@ -19,6 +19,7 @@ const pbAdminPassword = process.env.PB_ADMIN_PASSWORD;
 const workspacesCollection = process.env.PB_WORKSPACES_COLLECTION || 'workspaces';
 const usersCollection = process.env.PB_USERS_COLLECTION || 'users';
 const defaultWorkspaceName = process.env.DEFAULT_WORKSPACE_NAME || 'Office Device Inventory';
+const defaultWorkspaceId = process.env.DEFAULT_WORKSPACE_ID || '7hdaukcpiuzejeh';
 
 if (!stripeSecretKey || !stripeWebhookSecret || !stripePriceId || !clientUrl || !pocketbaseUrl || !pbAdminEmail || !pbAdminPassword) {
   throw new Error('Missing required backend environment variables.');
@@ -76,6 +77,14 @@ async function getDefaultWorkspace() {
   await ensureAdminAuth();
 
   try {
+    return await pb.collection(workspacesCollection).getOne(defaultWorkspaceId);
+  } catch (error) {
+    if (error?.status !== 404) {
+      throw error;
+    }
+  }
+
+  try {
     return await pb.collection(workspacesCollection).getFirstListItem(`name = "${defaultWorkspaceName}"`);
   } catch (error) {
     if (error?.status !== 404) {
@@ -110,14 +119,15 @@ async function resolveWorkspaceIdFromCheckoutSession(session) {
   const user = await findUserByEmail(customerEmail);
 
   if (!user) {
-    return '';
+    return defaultWorkspaceId;
   }
 
   if (Array.isArray(user.workspace)) {
     return user.workspace[0] || '';
   }
 
-  return typeof user.workspace === 'string' ? user.workspace : '';
+  const relationId = typeof user.workspace === 'string' ? user.workspace : '';
+  return relationId || defaultWorkspaceId;
 }
 
 async function resolveWorkspaceIdFromSubscription(subscription) {
@@ -129,7 +139,7 @@ async function resolveWorkspaceIdFromSubscription(subscription) {
   const customerId = subscription?.customer || '';
 
   if (!customerId) {
-    return '';
+    return defaultWorkspaceId;
   }
 
   await ensureAdminAuth();
@@ -139,7 +149,7 @@ async function resolveWorkspaceIdFromSubscription(subscription) {
     return workspace.id;
   } catch (error) {
     if (error?.status === 404) {
-      return '';
+      return defaultWorkspaceId;
     }
 
     throw error;
@@ -160,7 +170,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const workspaceId = await resolveWorkspaceIdFromCheckoutSession(session);
+      const workspaceId = (await resolveWorkspaceIdFromCheckoutSession(session)) || defaultWorkspaceId;
 
       if (workspaceId && session.subscription) {
         await updateWorkspace(workspaceId, {
@@ -175,7 +185,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
     if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object;
-      const workspaceId = await resolveWorkspaceIdFromSubscription(subscription);
+      const workspaceId = (await resolveWorkspaceIdFromSubscription(subscription)) || defaultWorkspaceId;
 
       if (workspaceId) {
         const status = subscription.status;
@@ -285,8 +295,7 @@ app.post('/api/billing/confirm-session', async (req, res) => {
     }
 
     if (!workspaceId) {
-      jsonError(res, 404, 'Workspace was not resolved for this checkout session.');
-      return;
+      workspaceId = defaultWorkspaceId;
     }
 
     await updateWorkspace(workspaceId, {
