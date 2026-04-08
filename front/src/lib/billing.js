@@ -1,5 +1,6 @@
 const apiUrl = import.meta.env.VITE_API_URL;
-const hostedPaymentLink = import.meta.env.VITE_STRIPE_PAYMENT_LINK;
+const hostedPaymentLink =
+  import.meta.env.VITE_STRIPE_PAYMENT_LINK || 'https://buy.stripe.com/test_3cI8wP0aGe5ybuVbv1aR201';
 
 if (!apiUrl) {
   throw new Error('Missing VITE_API_URL. Set it in your .env file.');

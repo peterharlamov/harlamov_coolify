@@ -76,9 +76,7 @@ async function getDefaultWorkspace() {
   await ensureAdminAuth();
 
   try {
-    return await pb.collection(workspacesCollection).getFirstListItem('id != ""', {
-      sort: 'created',
-    });
+    return await pb.collection(workspacesCollection).getFirstListItem(`name = "${defaultWorkspaceName}"`);
   } catch (error) {
     if (error?.status !== 404) {
       throw error;

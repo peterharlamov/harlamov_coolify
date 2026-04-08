@@ -7,11 +7,11 @@ import { PB_COLLECTIONS } from '../lib/pbCollections';
 export const AuthContext = createContext(null);
 
 const noWorkspaceMessage = 'Your account is not attached to a workspace. Contact administrator.';
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 async function attachUserToDefaultWorkspace(userId) {
-  if (!apiUrl || !userId) {
-    return null;
+  if (!userId) {
+    throw new Error('Cannot attach workspace: missing user id.');
   }
 
   const response = await fetch(`${String(apiUrl).replace(/\/$/, '')}/api/users/attach-workspace`, {
@@ -78,7 +78,22 @@ export function AuthProvider({ children }) {
     setWorkspaceError('');
 
     try {
-      const resolved = await ensureWorkspaceForCurrentUser(currentUser);
+      let resolved = await ensureWorkspaceForCurrentUser(currentUser);
+
+      if (!resolved && (currentUser.role || 'worker') !== 'admin') {
+        try {
+          await attachUserToDefaultWorkspace(currentUser.id);
+          const refreshed = await pb.collection(PB_COLLECTIONS.USERS_COLLECTION).authRefresh();
+          currentUser = refreshed?.record || pb.authStore.model;
+          resolved = await ensureWorkspaceForCurrentUser(currentUser);
+        } catch (attachError) {
+          devLog('auth.workspace.attach.error', {
+            message: attachError?.message,
+            status: attachError?.status,
+            data: attachError?.data,
+          });
+        }
+      }
 
       if (!resolved && (currentUser.role || 'worker') !== 'admin') {
         setWorkspace(null);
